@@ -10,18 +10,20 @@ const COL = {
 let lastFc = null;
 
 function dpr(c,h){
+  const cssH=Math.max(1,Number(c.dataset.chartHeight)||parseFloat(c.style.height)||h||220);
+  c.dataset.chartHeight=String(cssH);
   /* очистить прошлые инлайны, чтобы width:100% корректно измерил контейнер */
   c.style.removeProperty('width');
   c.style.removeProperty('height');
   const w=c.clientWidth||600;
   const r=window.devicePixelRatio||1;
   c.width=Math.max(1,Math.floor(w*r));
-  c.height=Math.max(1,Math.floor(h*r));
+  c.height=Math.max(1,Math.floor(cssH*r));
   /* зафиксировать обе CSS-величины, чтобы битмап-размер не утёк в вёрстку */
   c.style.width=w+'px';
-  c.style.height=h+'px';
+  c.style.height=cssH+'px';
   const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);
-  return{x,w,h};
+  return{x,w,h:cssH};
 }
 
 function chartPad(w,big){

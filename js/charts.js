@@ -10,6 +10,7 @@ const COL = {
 let lastFc = null;
 
 function dpr(c,h){
+  c.style.height=h+'px';
   const w=c.clientWidth||600;
   const r=window.devicePixelRatio||1;
   c.width=w*r;c.height=h*r;

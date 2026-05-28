@@ -10,10 +10,16 @@ const COL = {
 let lastFc = null;
 
 function dpr(c,h){
-  c.style.height=h+'px';
+  /* очистить прошлые инлайны, чтобы width:100% корректно измерил контейнер */
+  c.style.removeProperty('width');
+  c.style.removeProperty('height');
   const w=c.clientWidth||600;
   const r=window.devicePixelRatio||1;
-  c.width=w*r;c.height=h*r;
+  c.width=Math.max(1,Math.floor(w*r));
+  c.height=Math.max(1,Math.floor(h*r));
+  /* зафиксировать обе CSS-величины, чтобы битмап-размер не утёк в вёрстку */
+  c.style.width=w+'px';
+  c.style.height=h+'px';
   const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);
   return{x,w,h};
 }
@@ -376,11 +382,15 @@ function drawMonthlyForecast(r){
   drawBars('ch-fc-monthly',labels,vals,COL.green,tips);
 }
 
+let _resizeT;
 window.addEventListener('resize',()=>{
-  if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
-  if(document.getElementById('panel-forecast').classList.contains('active')&&lastFc){
-    drawForecast('ch-fc',lastFc,lastFc.startBalance);
-    drawMonthlyForecast(lastFc);
-    drawFinalDist(lastFc);
-  }
+  clearTimeout(_resizeT);
+  _resizeT=setTimeout(()=>{
+    if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
+    if(document.getElementById('panel-forecast').classList.contains('active')&&lastFc){
+      drawForecast('ch-fc',lastFc,lastFc.startBalance);
+      drawMonthlyForecast(lastFc);
+      drawFinalDist(lastFc);
+    }
+  },150);
 });

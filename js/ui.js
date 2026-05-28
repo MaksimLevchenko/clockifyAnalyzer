@@ -47,9 +47,9 @@ function bindTip(canvas,items,kind){
   canvas._items=items;canvas._kind=kind;
   if(canvas._tipBound)return;
   canvas._tipBound=true;
-  canvas.addEventListener('mousemove',e=>{
+  function handle(clientX,clientY){
     const rect=canvas.getBoundingClientRect();
-    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const mx=clientX-rect.left, my=clientY-rect.top;
     const its=canvas._items;
     if(!its||!its.length)return hideTip();
     let hit=null;
@@ -63,6 +63,10 @@ function bindTip(canvas,items,kind){
     if(!hit)return hideTip();
     const tipY=canvas._kind==='bar'?Math.max(hit.cy,my-10):hit.cy;
     showTip(rect.left+hit.cx,rect.top+tipY,hit.html);
-  });
+  }
+  canvas.addEventListener('mousemove',e=>handle(e.clientX,e.clientY));
   canvas.addEventListener('mouseleave',hideTip);
+  canvas.addEventListener('touchstart',e=>{const t=e.touches[0];if(t)handle(t.clientX,t.clientY)},{passive:true});
+  canvas.addEventListener('touchmove',e=>{const t=e.touches[0];if(t)handle(t.clientX,t.clientY)},{passive:true});
+  canvas.addEventListener('touchend',()=>setTimeout(hideTip,1500));
 }

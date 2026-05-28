@@ -169,3 +169,58 @@ details>summary::-webkit-details-marker{display:none}
 details>summary::before{content:'▸ '; display:inline-block; transition:transform .15s}
 details[open]>summary::before{transform:rotate(90deg)}
 details>summary:hover{color:var(--ink)}
+
+/* ===== mobile ===== */
+@media (max-width: 640px){
+  body{font-size:14px}
+  .wrap{padding:16px 12px 60px}
+
+  header.top{flex-direction:column; align-items:flex-start; gap:8px; padding-bottom:10px; margin-bottom:4px}
+  h1{font-size:24px}
+  h1 .sub{font-size:11px; letter-spacing:.12em; margin-top:6px}
+  .ticker{text-align:left; font-size:12px; line-height:1.5}
+
+  nav.tabs{flex-wrap:nowrap; overflow-x:auto; margin:14px -12px 12px; padding:0 12px; scrollbar-width:none}
+  nav.tabs::-webkit-scrollbar{display:none}
+  nav.tabs button{padding:8px 12px; font-size:13px; flex-shrink:0}
+
+  .card{padding:14px; border-radius:10px; margin-bottom:14px}
+  .card h2{font-size:17px}
+  .card p.hint{font-size:12.5px; margin-bottom:12px}
+
+  .row{gap:10px}
+  .field{min-width:0}
+  input,select{font-size:16px; padding:9px 10px}  /* 16px чтобы iOS не зумил при фокусе */
+  input[type=date]{min-width:0}
+  .btn{padding:10px 14px}
+  .btn.sm{padding:7px 10px}
+
+  /* таблицы — горизонтальный скролл, чтобы не вылезали за вьюпорт */
+  .card>table{display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; white-space:nowrap}
+  .card>table thead,
+  .card>table tbody{display:table; width:100%}
+
+  /* раскладка прогноза — чуть компактнее */
+  .fc-breakdown{font-size:12.5px}
+  .fc-breakdown .bd-row>span{padding:5px 0}
+  .fc-breakdown .bd-row.total>span{font-size:14px}
+  .fc-metrics{grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px}
+  .fc-metric{padding:9px 11px}
+  .fc-metric .v{font-size:15px}
+  .fc-metric .v[style*="font-size:14px"]{font-size:13px !important}
+
+  .stat{padding:10px 12px}
+  .stat .v{font-size:18px}
+
+  .chart-legend{font-size:11px; gap:3px 10px}
+  .chartbox h3{font-size:14px}
+
+  .formulas{font-size:12.5px}
+  .formulas code{font-size:11.5px; padding:1px 4px}
+
+  dialog.app-dialog{width:calc(100vw - 16px); max-width:none; margin:8px; padding:16px}
+  dialog.app-dialog .dialog-actions{justify-content:space-between}
+  dialog.app-dialog .dialog-actions .spacer{display:none}
+
+  .scroll{max-height:60vh}
+}

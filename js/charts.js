@@ -6,11 +6,16 @@ const COL = {
   green:'#2f6b4f', terra:'#b1462c', gold:'#a9792a',
   band:'rgba(47,107,79,.16)'
 };
+const CHART_HEIGHTS = {
+  'ch-daily':220, 'ch-hours':220, 'ch-monthly':220, 'ch-cum':220,
+  'ch-proj':240, 'ch-wd':200, 'ch-hist':200, 'ch-bal':240,
+  'ch-fc':280, 'ch-fc-monthly':220, 'ch-fc-dist':220
+};
 
 let lastFc = null;
 
 function dpr(c,h){
-  const cssH=Math.max(1,Number(c.dataset.chartHeight)||parseFloat(c.style.height)||h||220);
+  const cssH=Math.max(1,CHART_HEIGHTS[c.id]||Number(c.dataset.chartHeight)||h||220);
   c.dataset.chartHeight=String(cssH);
   /* очистить прошлые инлайны, чтобы width:100% корректно измерил контейнер */
   c.style.removeProperty('width');

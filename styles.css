@@ -86,11 +86,9 @@ tbody tr:hover{background:var(--paper2)}
 
 .chartbox{margin-bottom:24px}
 .chartbox h3{font-family:var(--serif); font-weight:600; font-size:16px; margin:0 0 8px; color:var(--ink)}
-canvas{width:100%; max-width:100%; display:block; cursor:crosshair}
-#ch-daily,#ch-hours,#ch-monthly,#ch-cum,#ch-fc-monthly,#ch-fc-dist{height:220px !important}
-#ch-proj,#ch-bal{height:240px !important}
-#ch-wd,#ch-hist{height:200px !important}
-#ch-fc{height:280px !important}
+canvas{display:block; cursor:crosshair}
+.canvas-host{position:relative; width:100%; display:block; overflow:hidden}
+.canvas-host>canvas{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair}
 
 .chart-tip{
   position:fixed; pointer-events:none; z-index:60;

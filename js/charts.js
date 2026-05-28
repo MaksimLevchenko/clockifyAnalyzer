@@ -14,20 +14,32 @@ const CHART_HEIGHTS = {
 
 let lastFc = null;
 
+function ensureCanvasHost(c,cssH){
+  let host=c.parentElement;
+  if(!host||!host.classList.contains('canvas-host')){
+    host=document.createElement('div');
+    host.className='canvas-host';
+    c.parentNode.insertBefore(host,c);
+    host.appendChild(c);
+  }
+  /* чистим прошлые инлайн-размеры — теперь канвас занимает 100% хоста через CSS */
+  c.style.removeProperty('width');
+  c.style.removeProperty('height');
+  host.style.height=cssH+'px';
+  return host;
+}
+
 function dpr(c,h){
   const cssH=Math.max(1,CHART_HEIGHTS[c.id]||Number(c.dataset.chartHeight)||h||220);
   c.dataset.chartHeight=String(cssH);
-  /* На мобильных скролл может вызывать resize. Держим высоту стабильной
-     даже на время измерения ширины, иначе страница визуально прыгает. */
-  c.style.width='100%';
-  c.style.height=cssH+'px';
-  const w=Math.max(1,Math.floor(c.getBoundingClientRect().width||c.parentElement.clientWidth||c.clientWidth||600));
+  const host=ensureCanvasHost(c,cssH);
+  /* width идёт от хоста — он всегда правильной ширины (width:100% контейнера),
+     не зависит от инлайн-стилей канваса. Высоту хоста жёстко задали выше,
+     overflow:hidden гарантирует, что любые выкрутасы канваса не утекут наружу. */
+  const w=Math.max(1,Math.floor(host.clientWidth||host.getBoundingClientRect().width||600));
   const r=window.devicePixelRatio||1;
   c.width=Math.max(1,Math.floor(w*r));
   c.height=Math.max(1,Math.floor(cssH*r));
-  /* зафиксировать обе CSS-величины, чтобы битмап-размер не утёк в вёрстку */
-  c.style.width=w+'px';
-  c.style.height=cssH+'px';
   const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);
   return{x,w,h:cssH};
 }

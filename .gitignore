@@ -1,1 +1,16 @@
-/Clockify_Time_Report_Detailed_01_04_2026-31_05_2026.csv
+# Personal data — Clockify exports и сохранённое состояние
+*.csv
+finance_state.json
+
+# Jupyter (старый прототип, не нужен для деплоя)
+*.ipynb
+.ipynb_checkpoints/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node (если когда-нибудь добавится сборка)
+node_modules/

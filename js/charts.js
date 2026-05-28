@@ -17,10 +17,11 @@ let lastFc = null;
 function dpr(c,h){
   const cssH=Math.max(1,CHART_HEIGHTS[c.id]||Number(c.dataset.chartHeight)||h||220);
   c.dataset.chartHeight=String(cssH);
-  /* очистить прошлые инлайны, чтобы width:100% корректно измерил контейнер */
-  c.style.removeProperty('width');
-  c.style.removeProperty('height');
-  const w=c.clientWidth||600;
+  /* На мобильных скролл может вызывать resize. Держим высоту стабильной
+     даже на время измерения ширины, иначе страница визуально прыгает. */
+  c.style.width='100%';
+  c.style.height=cssH+'px';
+  const w=Math.max(1,Math.floor(c.getBoundingClientRect().width||c.parentElement.clientWidth||c.clientWidth||600));
   const r=window.devicePixelRatio||1;
   c.width=Math.max(1,Math.floor(w*r));
   c.height=Math.max(1,Math.floor(cssH*r));
@@ -390,7 +391,11 @@ function drawMonthlyForecast(r){
 }
 
 let _resizeT;
+let _lastResizeWidth=window.innerWidth||document.documentElement.clientWidth||0;
 window.addEventListener('resize',()=>{
+  const width=window.innerWidth||document.documentElement.clientWidth||0;
+  if(Math.abs(width-_lastResizeWidth)<2)return;
+  _lastResizeWidth=width;
   clearTimeout(_resizeT);
   _resizeT=setTimeout(()=>{
     if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();

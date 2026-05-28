@@ -14,6 +14,13 @@ function fmt(n){
   return(neg?'−':'')+s;
 }
 
+function fmtCompact(n){
+  const abs=Math.abs(n);const neg=n<0?'−':'';
+  if(abs>=1e6)return neg+(abs/1e6).toFixed(abs>=1e7?0:1).replace(/\.0$/,'')+'M';
+  if(abs>=1e4)return neg+(abs/1e3).toFixed(0)+'K';
+  return fmt(n);
+}
+
 function esc(s){return(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 
 function wd(d){const[y,m,dd]=d.split('-').map(Number);return(new Date(Date.UTC(y,m-1,dd)).getUTCDay()+6)%7}

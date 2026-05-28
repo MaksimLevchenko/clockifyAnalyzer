@@ -195,10 +195,10 @@ details>summary:hover{color:var(--ink)}
   .btn{padding:10px 14px}
   .btn.sm{padding:7px 10px}
 
-  /* таблицы — горизонтальный скролл, чтобы не вылезали за вьюпорт */
-  .card>table{display:block; overflow-x:auto; -webkit-overflow-scrolling:touch; white-space:nowrap}
-  .card>table thead,
-  .card>table tbody{display:table; width:100%}
+  /* таблицы компактнее */
+  th,td{padding:6px 8px}
+  table{font-size:12.5px}
+  .scroll{max-height:none}
 
   /* раскладка прогноза — чуть компактнее */
   .fc-breakdown{font-size:12.5px}

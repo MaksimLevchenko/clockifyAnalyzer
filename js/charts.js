@@ -17,6 +17,16 @@ function dpr(c,h){
   return{x,w,h};
 }
 
+function chartPad(w,big){
+  /* big = wider left for big numbers (cumulative / forecast). */
+  if(w<420)return{l:big?44:36, r:6, t:10, b:22};
+  return{l:big?60:54, r:10, t:12, b:24};
+}
+function chartLabelStep(w,n){
+  const targets=w<320?4:w<420?6:w<700?8:12;
+  return Math.max(1,Math.ceil(n/targets));
+}
+
 function niceMax(v){
   if(v<=0)return 1;
   const p=Math.pow(10,Math.floor(Math.log10(v)));
@@ -26,19 +36,20 @@ function niceMax(v){
 
 function axes(x,w,h,maxV,pad){
   x.strokeStyle=COL.line;x.fillStyle=COL.muted;
-  x.font='11px Spline Sans Mono, monospace';x.lineWidth=1;
+  const small=w<420;
+  x.font=(small?'10px':'11px')+' Spline Sans Mono, monospace';x.lineWidth=1;
   for(let i=0;i<=4;i++){
     const yy=pad.t+(h-pad.t-pad.b)*i/4;
     const val=maxV*(1-i/4);
     x.beginPath();x.moveTo(pad.l,yy);x.lineTo(w-pad.r,yy);x.stroke();
-    x.textAlign='right';x.fillText(fmt(val),pad.l-6,yy+3);
+    x.textAlign='right';x.fillText(small?fmtCompact(val):fmt(val),pad.l-4,yy+3);
   }
 }
 
 function drawBars(id,labels,vals,color,tips){
   const c=document.getElementById(id);if(!c)return;
   const{x,w,h}=dpr(c,c.getAttribute('height')*1);
-  const pad={l:54,r:10,t:12,b:24};
+  const pad=chartPad(w,true);
   const mx=niceMax(Math.max(...vals,1));axes(x,w,h,mx,pad);
   const n=vals.length;const bw=(w-pad.l-pad.r)/n;
   const items=[];
@@ -47,8 +58,8 @@ function drawBars(id,labels,vals,color,tips){
     x.fillStyle=color;x.fillRect(bx+bw*0.12,h-pad.b-bh,bw*0.76,bh);
     items.push({x:bx,w:bw,cx:bx+bw/2,cy:h-pad.b-bh,html:tips?tips[i]:`<b>${esc(String(labels[i]))}</b><br>${fmt(v)}`});
   });
-  x.fillStyle=COL.muted;x.textAlign='center';x.font='10px Spline Sans Mono, monospace';
-  const step=Math.ceil(n/12);
+  x.fillStyle=COL.muted;x.textAlign='center';x.font=(w<420?'9px':'10px')+' Spline Sans Mono, monospace';
+  const step=chartLabelStep(w,n);
   labels.forEach((lb,i)=>{if(i%step===0){x.fillText(lb,pad.l+i*bw+bw/2,h-pad.b+13)}});
   bindTip(c,items,'bar');
 }
@@ -56,7 +67,7 @@ function drawBars(id,labels,vals,color,tips){
 function drawArea(id,labels,vals,tips){
   const c=document.getElementById(id);if(!c)return;
   const{x,w,h}=dpr(c,c.getAttribute('height')*1);
-  const pad={l:54,r:10,t:12,b:24};
+  const pad=chartPad(w,true);
   const mx=niceMax(Math.max(...vals,1));axes(x,w,h,mx,pad);
   const n=vals.length;
   const px=i=>pad.l+(w-pad.l-pad.r)*(n<2?0:i/(n-1));
@@ -67,8 +78,8 @@ function drawArea(id,labels,vals,tips){
   x.fillStyle='rgba(47,107,79,.14)';x.fill();
   x.beginPath();vals.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
   x.strokeStyle=COL.green;x.lineWidth=2;x.stroke();
-  x.fillStyle=COL.muted;x.textAlign='center';x.font='10px Spline Sans Mono, monospace';
-  const step=Math.ceil(n/12);
+  x.fillStyle=COL.muted;x.textAlign='center';x.font=(w<420?'9px':'10px')+' Spline Sans Mono, monospace';
+  const step=chartLabelStep(w,n);
   labels.forEach((lb,i)=>{if(i%step===0)x.fillText(lb,px(i),h-pad.b+13)});
   const items=vals.map((v,i)=>({cx:px(i),cy:py(v),html:tips?tips[i]:`<b>${esc(String(labels[i]))}</b><br>${fmt(v)}`}));
   bindTip(c,items,'point');
@@ -77,19 +88,20 @@ function drawArea(id,labels,vals,tips){
 function drawForecast(id,r,startBal){
   const c=document.getElementById(id);if(!c)return;
   const{x,w,h}=dpr(c,c.getAttribute('height')*1);
-  const pad={l:60,r:12,t:12,b:24};
+  const pad=chartPad(w,true);
   const allV=r.p90.concat(r.p10,[startBal]);
   const mx=niceMax(Math.max(...allV));
   const mn=Math.min(...r.p10,startBal,0);
   const span=mx-mn||1;const n=r.days.length;
   const px=i=>pad.l+(w-pad.l-pad.r)*(n<2?0:i/(n-1));
   const py=v=>h-pad.b-(h-pad.t-pad.b)*((v-mn)/span);
-  x.strokeStyle=COL.line;x.fillStyle=COL.muted;x.font='11px Spline Sans Mono, monospace';x.lineWidth=1;
+  const small=w<420;
+  x.strokeStyle=COL.line;x.fillStyle=COL.muted;x.font=(small?'10px':'11px')+' Spline Sans Mono, monospace';x.lineWidth=1;
   for(let i=0;i<=4;i++){
     const yy=pad.t+(h-pad.t-pad.b)*i/4;
     const val=mn+span*(1-i/4);
     x.beginPath();x.moveTo(pad.l,yy);x.lineTo(w-pad.r,yy);x.stroke();
-    x.textAlign='right';x.fillText(fmt(val),pad.l-6,yy+3);
+    x.textAlign='right';x.fillText(small?fmtCompact(val):fmt(val),pad.l-4,yy+3);
   }
   // band
   x.beginPath();r.p90.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
@@ -112,8 +124,8 @@ function drawForecast(id,r,startBal){
   x.strokeStyle=COL.muted;x.lineWidth=1.5;
   (r.payDayDates||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.moveTo(px(i),pad.t);x.lineTo(px(i),pad.t+8);x.stroke()}});
   // x labels
-  x.fillStyle=COL.muted;x.textAlign='center';x.font='10px Spline Sans Mono, monospace';
-  const step=Math.ceil(n/10);
+  x.fillStyle=COL.muted;x.textAlign='center';x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
+  const step=chartLabelStep(w,n);
   r.days.forEach((d,i)=>{if(i%step===0)x.fillText(dateRu(d),px(i),h-pad.b+13)});
   // hover tooltips
   const ccy=esc(cur());
@@ -136,25 +148,26 @@ function drawForecast(id,r,startBal){
 function drawLine(id,labels,vals,tips){
   const c=document.getElementById(id);if(!c)return;
   const{x,w,h}=dpr(c,c.getAttribute('height')*1);
-  const pad={l:60,r:12,t:12,b:24};
+  const pad=chartPad(w,true);
   const mx=niceMax(Math.max(...vals,1));
   const mn=Math.min(...vals,0);
   const span=mx-mn||1;const n=vals.length;
   const px=i=>pad.l+(w-pad.l-pad.r)*(n<2?0:i/(n-1));
   const py=v=>h-pad.b-(h-pad.t-pad.b)*((v-mn)/span);
-  x.strokeStyle=COL.line;x.fillStyle=COL.muted;x.font='11px Spline Sans Mono, monospace';x.lineWidth=1;
+  const small=w<420;
+  x.strokeStyle=COL.line;x.fillStyle=COL.muted;x.font=(small?'10px':'11px')+' Spline Sans Mono, monospace';x.lineWidth=1;
   for(let i=0;i<=4;i++){
     const yy=pad.t+(h-pad.t-pad.b)*i/4;
     const val=mn+span*(1-i/4);
     x.beginPath();x.moveTo(pad.l,yy);x.lineTo(w-pad.r,yy);x.stroke();
-    x.textAlign='right';x.fillText(fmt(val),pad.l-6,yy+3);
+    x.textAlign='right';x.fillText(small?fmtCompact(val):fmt(val),pad.l-4,yy+3);
   }
   x.beginPath();vals.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
   x.strokeStyle=COL.green;x.lineWidth=2.5;x.stroke();
   x.fillStyle=COL.gold;x.strokeStyle=COL.ink;x.lineWidth=1;
-  vals.forEach((v,i)=>{x.beginPath();x.arc(px(i),py(v),5,0,7);x.fill();x.stroke()});
-  x.fillStyle=COL.muted;x.textAlign='center';x.font='10px Spline Sans Mono, monospace';
-  const step=Math.ceil(n/10);
+  vals.forEach((v,i)=>{x.beginPath();x.arc(px(i),py(v),small?4:5,0,7);x.fill();x.stroke()});
+  x.fillStyle=COL.muted;x.textAlign='center';x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
+  const step=chartLabelStep(w,n);
   labels.forEach((lb,i)=>{if(i%step===0)x.fillText(lb,px(i),h-pad.b+13)});
   const items=vals.map((v,i)=>({cx:px(i),cy:py(v),html:tips?tips[i]:`<b>${esc(String(labels[i]))}</b><br>${fmt(v)}`}));
   bindTip(c,items,'point');

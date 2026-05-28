@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Финансовый помощник</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Финансовый помощник<span class="sub">Доход · расходы · прогноз накоплений</span></h1>
+    <div class="ticker" id="ticker">нет данных</div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="data" class="active">Данные</button>
+    <button data-tab="work">Работа</button>
+    <button data-tab="expenses">Расходы</button>
+    <button data-tab="charts">Графики</button>
+    <button data-tab="forecast">Прогноз</button>
+  </nav>
+
+  <!-- ===== DATA ===== -->
+  <section class="panel active" id="panel-data">
+    <div class="card">
+      <h2>Отчёты Clockify</h2>
+      <p class="hint">«Импорт» <b>заменяет</b> все записи. «Догрузить» <b>добавляет</b> только новые записи из отчёта — совпадающие (по времени, проекту, часам и ставке) пропускаются.</p>
+      <div class="row">
+        <label class="btn filebtn">📥 Импорт (заменить)<input type="file" accept=".csv" id="file-import"></label>
+        <label class="btn green filebtn">➕ Догрузить (без дублей)<input type="file" accept=".csv" id="file-merge"></label>
+      </div>
+      <div class="divider"></div>
+      <div class="stat-grid" id="data-stats"></div>
+    </div>
+
+    <div class="card">
+      <h2>Параметры</h2>
+      <div class="row">
+        <div class="field"><label>Ставка / час</label><input type="number" id="in-rate" step="0.01"></div>
+        <div class="field"><label>Валюта</label><input type="text" id="in-currency" maxlength="6" style="width:90px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Дни выплаты</h2>
+      <p class="hint">Дни месяца, когда тебе приходит зарплата за предыдущий период. Между выплатами доход за работу накапливается и попадает на баланс <b>только в день выплаты</b>. Если не настроено — доход начисляется ежедневно (как раньше).</p>
+      <div id="pd-list" class="row"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost sm" id="pd-add">+ день выплаты</button>
+        <small class="note">Максимум 4. Допустимые значения 1–28.</small>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Чекпоинты баланса</h2>
+      <p class="hint">Самый поздний чекпоинт — стартовая точка прогноза. Будущие чекпоинты <b>калибруют</b> прогноз: на их дату прогноз «подтягивается» к фактическому значению, и сдвиг применяется ко всем последующим дням.</p>
+      <div class="row">
+        <div class="field"><label>Дата</label><input type="date" id="cp-date"></div>
+        <div class="field"><label>Баланс</label><input type="number" id="cp-amt" step="0.01" value="0"></div>
+        <button class="btn green" id="cp-add">➕ Сохранить чекпоинт</button>
+      </div>
+      <div id="cp-summary" class="hint" style="margin-top:14px"></div>
+      <table id="cp-table"><thead><tr><th>Дата</th><th class="num">Баланс</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>Сохранение</h2>
+      <p class="hint">Данные хранятся в браузере автоматически. Для переноса на другой компьютер — экспортируй в файл.</p>
+      <div class="row">
+        <button class="btn ghost" id="btn-export">⬇ Экспорт в файл</button>
+        <label class="btn ghost filebtn">⬆ Импорт из файла<input type="file" accept=".json" id="file-state"></label>
+        <button class="btn terra" id="btn-reset">Сбросить всё</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== WORK ===== -->
+  <section class="panel" id="panel-work">
+    <div class="card">
+      <h2>Записи о работе</h2>
+      <div id="work-summary" class="hint"></div>
+      <div class="scroll"><table id="work-table"><thead><tr>
+        <th>Дата</th><th>Проект</th><th class="num">Часы</th><th class="num">Ставка</th><th class="num">Сумма</th><th></th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div class="card">
+      <h2>Групповое изменение</h2>
+      <p class="hint">Выбери фильтр и действие — изменение применится ко всем подходящим записям.</p>
+      <div class="row">
+        <div class="field"><label>С даты</label><input type="date" id="ge-from"></div>
+        <div class="field"><label>По дату</label><input type="date" id="ge-to"></div>
+        <div class="field"><label>Проект (пусто = любой)</label><input type="text" id="ge-proj"></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label>Дни недели (пусто = все)</label>
+        <div class="wd-pick" id="ge-wd"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label>Действие</label>
+          <select id="ge-act">
+            <option value="set_rate">Установить ставку</option>
+            <option value="set_hours">Установить часы</option>
+            <option value="scale_hours">Умножить часы на</option>
+            <option value="delete">Удалить записи</option>
+          </select>
+        </div>
+        <div class="field"><label>Значение</label><input type="number" id="ge-val" step="0.01" value="0"></div>
+        <button class="btn ghost" id="ge-preview">👁 Предпросмотр</button>
+        <button class="btn" id="ge-apply">Применить</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Добавить запись</h2>
+      <div class="row">
+        <div class="field"><label>Дата</label><input type="date" id="ad-date"></div>
+        <div class="field"><label>Проект</label><input type="text" id="ad-proj"></div>
+        <div class="field"><label>Часы</label><input type="number" id="ad-hours" step="0.01" value="0"></div>
+        <div class="field"><label>Ставка</label><input type="number" id="ad-rate" step="0.01" value="0"></div>
+        <button class="btn green" id="ad-add">➕ Добавить</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== EXPENSES ===== -->
+  <section class="panel" id="panel-expenses">
+    <div class="card">
+      <h2>Добавить расход</h2>
+      <div class="row">
+        <div class="field"><label>Тип</label>
+          <select id="ex-kind">
+            <option value="monthly">Ежемесячный (в число)</option>
+            <option value="daily">Ежедневный (равномерно за месяц)</option>
+            <option value="once">Разовый</option>
+          </select>
+        </div>
+        <div class="field"><label>Название</label><input type="text" id="ex-name" placeholder="Аренда"></div>
+        <div class="field"><label>Сумма</label><input type="number" id="ex-amt" step="0.01" value="0"></div>
+        <div class="field" id="ex-day-field"><label>День месяца</label><input type="number" id="ex-day" min="1" max="28" value="1"></div>
+        <div class="field" id="ex-date-field" style="display:none"><label>Дата</label><input type="date" id="ex-date"></div>
+        <button class="btn green" id="ex-add">➕ Добавить</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Список расходов</h2>
+      <div id="ex-summary" class="hint"></div>
+      <table id="ex-table"><thead><tr><th>Тип</th><th>Название</th><th class="num">Сумма</th><th>Когда</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>Разовые поступления</h2>
+      <p class="hint">Добавляются к балансу в указанную дату (премия, возврат, бонус). Учитываются в прогнозе.</p>
+      <div class="row">
+        <div class="field"><label>Дата</label><input type="date" id="inc-date"></div>
+        <div class="field"><label>Название</label><input type="text" id="inc-name" placeholder="Премия"></div>
+        <div class="field"><label>Сумма</label><input type="number" id="inc-amt" step="0.01" value="0"></div>
+        <button class="btn green" id="inc-add">➕ Добавить</button>
+      </div>
+      <div id="inc-summary" class="hint" style="margin-top:12px"></div>
+      <table id="inc-table"><thead><tr><th>Название</th><th class="num">Сумма</th><th>Дата</th><th></th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- ===== CHARTS ===== -->
+  <section class="panel" id="panel-charts">
+    <div class="card" id="card-time">
+      <h2>Доход во времени</h2>
+      <div class="chartbox">
+        <h3>Доход по дням</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-green"></i>доход за день</span></div>
+        <canvas id="ch-daily" height="220"></canvas>
+      </div>
+      <div class="chartbox">
+        <h3>Часы по дням</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-gold"></i>часы за день</span></div>
+        <canvas id="ch-hours" height="220"></canvas>
+      </div>
+      <div class="chartbox">
+        <h3>Помесячный доход</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-green"></i>доход за календарный месяц</span></div>
+        <canvas id="ch-monthly" height="220"></canvas>
+      </div>
+      <div class="chartbox">
+        <h3>Накопительный доход</h3>
+        <div class="chart-legend"><span><i class="lg lg-line"></i>накопленный доход с начала периода</span><span><i class="lg lg-band"></i>заливка до нуля</span></div>
+        <canvas id="ch-cum" height="220"></canvas>
+      </div>
+    </div>
+    <div class="card" id="card-dist">
+      <h2>Распределение</h2>
+      <div class="chartbox">
+        <h3>Доход по проектам (топ-8)</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-gold"></i>доход по проекту</span></div>
+        <canvas id="ch-proj" height="240"></canvas>
+      </div>
+      <div class="chartbox">
+        <h3>Средний доход за рабочий день недели</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-gold"></i>средний доход за день недели (Пн–Вс)</span></div>
+        <canvas id="ch-wd" height="200"></canvas>
+      </div>
+      <div class="chartbox">
+        <h3>Распределение дохода за рабочий день</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-terra"></i>число рабочих дней в диапазоне дохода</span></div>
+        <canvas id="ch-hist" height="200"></canvas>
+      </div>
+    </div>
+    <div class="card" id="card-balance" style="display:none">
+      <h2>Баланс по чекпоинтам</h2>
+      <p class="hint">Фактические балансы в хронологическом порядке. Полезно, когда чекпоинтов несколько — видно реальную динамику.</p>
+      <div class="chartbox">
+        <div class="chart-legend"><span><i class="lg lg-line"></i>линия по чекпоинтам</span><span><i class="lg lg-dot lg-gold"></i>чекпоинт</span></div>
+        <canvas id="ch-bal" height="240"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== FORECAST ===== -->
+  <section class="panel" id="panel-forecast">
+    <div class="card">
+      <h2>Прогноз накоплений</h2>
+      <p class="hint">Будущий доход моделируется по твоему режиму (для каждого дня недели — вероятность работы и реальные часы) × ставка, минус расходы по датам, начиная от текущего баланса. Полоса — интервал 80% (разброс из-за неравномерной загрузки).</p>
+      <div class="row">
+        <div class="field"><label>Прогноз до даты</label><input type="date" id="fc-end"></div>
+        <button class="btn" id="fc-run">📈 Построить прогноз</button>
+      </div>
+      <div class="chart-legend" style="margin-top:18px">
+        <span><i class="lg lg-line"></i>среднее</span>
+        <span><i class="lg lg-band"></i>интервал 80%</span>
+        <span><i class="lg lg-line lg-dash"></i>стартовый баланс</span>
+        <span><i class="lg lg-dot lg-terra"></i>расход</span>
+        <span><i class="lg lg-dot lg-green-dot"></i>поступление</span>
+        <span><i class="lg lg-dot lg-gold"></i>чекпоинт (калибровка)</span>
+        <span><i class="lg lg-tick"></i>день выплаты</span>
+      </div>
+      <div class="chartbox" style="margin-top:6px"><canvas id="ch-fc" height="280"></canvas></div>
+      <div class="fc-summary" id="fc-summary"></div>
+    </div>
+
+    <div class="card" id="card-fc-extras" style="display:none">
+      <h2>Дополнительные данные</h2>
+      <div class="chartbox">
+        <h3>Помесячный прогноз дохода от работы</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-green"></i>доход за календарный месяц (факт до якоря + прогноз)</span></div>
+        <canvas id="ch-fc-monthly" height="220"></canvas>
+      </div>
+      <div class="chartbox">
+        <h3>Распределение финального баланса</h3>
+        <div class="chart-legend"><span><i class="lg lg-bar lg-gold"></i>число симуляций с балансом в диапазоне</span></div>
+        <canvas id="ch-fc-dist" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card" id="card-fc-model" style="display:none">
+      <h2>Модель прогноза</h2>
+      <details>
+        <summary>Формулы и допущения</summary>
+        <div class="formulas">
+          <p><b>На основе истории Clockify</b> для каждого дня недели <code>w</code> ∈ {Пн…Вс} считается:</p>
+          <ul>
+            <li><code>p_work[w]</code> — доля дней этого недельного дня, в которые была работа</li>
+            <li><code>pool[w]</code> — массив фактических часов, отработанных в такие дни</li>
+            <li><code>avg_h[w] = mean(pool[w])</code> — среднее число часов в рабочий день этого типа</li>
+            <li><code>E[h][w] = p_work[w] · avg_h[w]</code> — ожидаемое число часов в день недели <code>w</code></li>
+          </ul>
+          <p><b>Симуляция</b> на каждый день в горизонте прогноза (Monte Carlo, 5000 запусков):</p>
+          <ul>
+            <li>С вероятностью <code>p_work[w]</code> часы выбираются случайно равномерно из <code>pool[w]</code>, иначе 0</li>
+            <li>Доход за работу: <code>часы × ставка</code></li>
+            <li>Если день — день выплаты: накопленный с прошлой выплаты доход за работу идёт на баланс; иначе остаётся в «непогашенном пуле»</li>
+            <li>Расходы (<code>−</code>) и разовые поступления (<code>+</code>) применяются к балансу в свою дату; ежедневные — равномерно как <code>сумма/дней_в_месяце</code></li>
+          </ul>
+          <p><b>Калибровка</b> по будущим чекпоинтам с известным балансом <code>B_actual</code> в день <code>i</code>:</p>
+          <p style="margin-left:18px"><code>shift += B_actual − (mean[i] + shift)</code></p>
+          <p>Сдвиг применяется ко всем последующим дням (<code>mean</code>, <code>p10</code>, <code>p90</code>, итоговые симуляции).</p>
+          <p><b>Интервал 80%</b>: <code>[p10, p90]</code> = 10-й и 90-й перцентили распределения балансов по симуляциям. Детерминированный <code>seed</code> — результат воспроизводим.</p>
+        </div>
+      </details>
+      <div id="model-summary" class="hint" style="margin:14px 0 8px"></div>
+      <div class="scroll"><table id="model-table">
+        <thead><tr>
+          <th>День</th>
+          <th class="num" title="Из всех таких дней недели в истории — в скольких % хоть одна запись Clockify">% дней с работой</th>
+          <th class="num" title="Среднее число часов в те дни, когда работа была (без учёта выходных)">Часы в рабочий день</th>
+          <th class="num" title="% дней с работой × среднее число часов в рабочий день = сколько часов модель ожидает в такой день недели">Ожид. часов / день</th>
+          <th class="num" title="Ожид. часов × ставка">Ожид. доход / день</th>
+          <th class="num" title="Сколько таких дней недели было в твоей истории Clockify">Дней в истории</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<dialog class="app-dialog" id="entry-dialog">
+  <h3>Изменить запись</h3>
+  <div class="meta" id="ed-meta"></div>
+  <div class="row">
+    <div class="field"><label>Дата</label><input type="date" id="ed-date"></div>
+    <div class="field" style="flex:1"><label>Проект</label><input type="text" id="ed-proj"></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="field"><label>Часы</label><input type="number" id="ed-hours" step="0.01"></div>
+    <div class="field"><label>Ставка</label><input type="number" id="ed-rate" step="0.01"></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div class="field" style="flex:1"><label>Описание</label><input type="text" id="ed-desc"></div>
+  </div>
+  <div class="dialog-actions">
+    <button class="btn terra" id="ed-delete">Удалить</button>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="ed-cancel">Отмена</button>
+    <button class="btn green" id="ed-save">Сохранить</button>
+  </div>
+</dialog>
+
+<script src="js/core.js"></script>
+<script src="js/state.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

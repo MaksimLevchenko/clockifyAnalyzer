@@ -40,6 +40,7 @@ function saveStateRaw(){
 function saveState(){
   state.updatedAt=new Date().toISOString();
   saveStateRaw();
+  if(typeof schedulePush==='function')schedulePush();
 }
 
 function cur(){return state.currency||'USD'}

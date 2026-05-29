@@ -716,10 +716,102 @@ const fcAnchor=document.getElementById('fc-anchor');
 if(fcAnchor)fcAnchor.addEventListener('change',()=>runForecast(true));
 
 /* ========================= GIST SYNC ========================= */
+const AUTOPUSH_DEBOUNCE=5000;
+const AUTOPULL_MIN_INTERVAL=10000;
+const ERROR_BACKOFF=60000;
+
+let pushTimer=null;
+let pushInFlight=false;
+let pullInFlight=false;
+let nextAllowedPushAt=0;
+let lastAutoPullAt=0;
+
 function syncIsDirty(){
   const cfg=loadGistCfg();
   if(!cfg.lastSyncedLocalAt)return true;
   return state.updatedAt!==cfg.lastSyncedLocalAt;
+}
+
+function clearAutoPush(){if(pushTimer){clearTimeout(pushTimer);pushTimer=null}}
+
+function schedulePush(){
+  const cfg=loadGistCfg();
+  if(!cfg.token||!cfg.gistId)return;
+  if(pushInFlight)return;
+  const delay=Math.max(AUTOPUSH_DEBOUNCE,nextAllowedPushAt-Date.now());
+  clearAutoPush();
+  pushTimer=setTimeout(doAutoPush,delay);
+  renderSync();
+}
+
+async function pushNow(silent){
+  if(pushInFlight){if(!silent)toast('Push уже идёт');return}
+  if(pullInFlight){if(!silent)toast('Pull в процессе, попробуй через секунду');return}
+  const cfg=loadGistCfg();
+  if(!cfg.token||!cfg.gistId){if(!silent)toast('Сначала настрой синхронизацию');return}
+  pushInFlight=true;clearAutoPush();renderSync();
+  const snapAt=state.updatedAt;
+  try{
+    const res=await gistPush(cfg.token,cfg.gistId,state);
+    const cfg2=loadGistCfg();
+    saveGistCfg(Object.assign({},cfg2,{gistUrl:res.url||cfg2.gistUrl,
+      lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:snapAt,lastError:''}));
+    nextAllowedPushAt=0;
+    if(!silent)toast('Push успешен');
+  }catch(e){
+    const cfg2=loadGistCfg();
+    saveGistCfg(Object.assign({},cfg2,{lastError:e.message}));
+    if(silent)nextAllowedPushAt=Date.now()+ERROR_BACKOFF;
+    toast((silent?'Авто-push: ':'Ошибка: ')+e.message);
+  }finally{
+    pushInFlight=false;renderSync();
+    if(silent&&syncIsDirty())schedulePush();
+  }
+}
+
+async function doAutoPush(){
+  pushTimer=null;
+  if(!syncIsDirty()){renderSync();return}
+  await pushNow(true);
+}
+
+async function pullNow(silent){
+  if(pushInFlight){if(!silent)toast('Push в процессе, попробуй через секунду');return}
+  if(pullInFlight){if(!silent)toast('Pull уже идёт');return}
+  const cfg=loadGistCfg();
+  if(!cfg.token||!cfg.gistId){if(!silent)toast('Сначала настрой синхронизацию');return}
+  pullInFlight=true;renderSync();
+  try{
+    const res=await gistPull(cfg.token,cfg.gistId);
+    if(silent&&res.updatedAt===cfg.lastSyncedRemoteAt)return;
+    if(silent&&syncIsDirty()){
+      toast('В gist есть свежие данные, но локально есть несинхр. изменения — выбери Push или Pull вручную');
+      return;
+    }
+    if(!silent&&syncIsDirty()&&!confirm('Локально есть несинхр. изменения — перезаписать их данными из gist?'))return;
+    state=migrate(res.state);
+    afterDataChange({silent:true});
+    const cfg2=loadGistCfg();
+    saveGistCfg(Object.assign({},cfg2,{gistUrl:res.url||cfg2.gistUrl,
+      lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt,lastError:''}));
+    syncInputs();renderSync();
+    toast(silent?'Загружены свежие данные из gist':'Pull успешен');
+  }catch(e){
+    const cfg2=loadGistCfg();
+    saveGistCfg(Object.assign({},cfg2,{lastError:e.message}));
+    if(!silent)toast('Ошибка: '+e.message);
+  }finally{
+    pullInFlight=false;renderSync();
+  }
+}
+
+function maybeAutoPull(){
+  const cfg=loadGistCfg();
+  if(!cfg.token||!cfg.gistId)return;
+  const now=Date.now();
+  if(now-lastAutoPullAt<AUTOPULL_MIN_INTERVAL)return;
+  lastAutoPullAt=now;
+  pullNow(true);
 }
 
 function renderSync(){
@@ -735,25 +827,29 @@ function renderSync(){
   }
   const linkHtml=cfg.gistUrl?` · <a href="${esc(cfg.gistUrl)}" target="_blank" rel="noopener">открыть на GitHub</a>`:'';
   const last=cfg.lastSyncedRemoteAt?esc(cfg.lastSyncedRemoteAt.replace('T',' ').slice(0,19))+' UTC':'—';
-  const dirty=syncIsDirty();
-  const stateLine=dirty
-    ?'<b style="color:#b1462c">⚠ есть локальные изменения — нажми Push</b>'
-    :'<b style="color:#2f6b4f">✓ всё синхронизировано</b>';
-  s.innerHTML=`Gist: <code>${esc(cfg.gistId)}</code>${linkHtml}<br>Последняя синхронизация: <b>${last}</b> · ${stateLine}`;
+  let line;
+  if(pushInFlight)line='<b style="color:#a9792a">🔄 push…</b>';
+  else if(pullInFlight)line='<b style="color:#a9792a">🔄 pull…</b>';
+  else if(syncIsDirty()){
+    line=pushTimer
+      ?'<b style="color:#a9792a">⏱ авто-push через несколько сек…</b>'
+      :'<b style="color:#b1462c">⚠ есть локальные изменения</b>';
+  }else line='<b style="color:#2f6b4f">✓ синхронизировано · авто-push/pull активны</b>';
+  const errLine=cfg.lastError?`<br><span style="color:#b1462c">Последняя ошибка: ${esc(cfg.lastError)}</span>`:'';
+  s.innerHTML=`Gist: <code>${esc(cfg.gistId)}</code>${linkHtml}<br>Последняя синхронизация: <b>${last}</b> · ${line}${errLine}`;
 }
 
 async function doSync(action){
   const token=document.getElementById('gist-token').value.trim();
   const idRaw=document.getElementById('gist-id').value.trim();
-  const cfg=loadGistCfg();
   try{
     if(action==='create'){
       if(!token){toast('Сначала вставь токен');return}
       if(!confirm('Создать новый приватный gist и загрузить туда текущее состояние?'))return;
       const res=await gistCreate(token,state);
       saveGistCfg({token,gistId:res.id,gistUrl:res.url,
-        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt});
-      renderSync();toast('Gist создан · '+res.id);
+        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt,lastError:''});
+      nextAllowedPushAt=0;renderSync();toast('Gist создан · '+res.id);
     }else if(action==='link'){
       if(!token){toast('Сначала вставь токен');return}
       const id=parseGistId(idRaw);
@@ -762,30 +858,16 @@ async function doSync(action){
       if(hasLocal&&!confirm('Скачать состояние из gist и заменить локальные данные? Локальное состояние будет потеряно.'))return;
       const res=await gistPull(token,id);
       state=migrate(res.state);
-      saveStateRaw();
+      afterDataChange({silent:true});
       saveGistCfg({token,gistId:id,gistUrl:res.url,
-        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt});
-      syncInputs();afterDataChange();renderSync();
+        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt,lastError:''});
+      nextAllowedPushAt=0;syncInputs();renderSync();
       toast('Связано · данные из gist загружены');
-    }else if(action==='push'){
-      if(!cfg.token||!cfg.gistId){toast('Сначала настрой синхронизацию');return}
-      const res=await gistPush(cfg.token,cfg.gistId,state);
-      saveGistCfg(Object.assign({},cfg,{gistUrl:res.url||cfg.gistUrl,
-        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt}));
-      renderSync();toast('Push успешен');
-    }else if(action==='pull'){
-      if(!cfg.token||!cfg.gistId){toast('Сначала настрой синхронизацию');return}
-      if(syncIsDirty()&&!confirm('Локально есть несинхронизированные изменения — перезаписать их данными из gist?'))return;
-      const res=await gistPull(cfg.token,cfg.gistId);
-      state=migrate(res.state);
-      saveStateRaw();
-      saveGistCfg(Object.assign({},cfg,{gistUrl:res.url||cfg.gistUrl,
-        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt}));
-      syncInputs();afterDataChange();renderSync();
-      toast('Pull успешен');
+    }else if(action==='push'){await pushNow(false);
+    }else if(action==='pull'){await pullNow(false);
     }else if(action==='disconnect'){
       if(!confirm('Отключить синхронизацию? Токен и Gist ID будут удалены из браузера (сам gist на GitHub останется).'))return;
-      clearGistCfg();
+      clearAutoPush();clearGistCfg();
       document.getElementById('gist-token').value='';
       document.getElementById('gist-id').value='';
       renderSync();toast('Синхронизация отключена');
@@ -796,6 +878,9 @@ async function doSync(action){
 ['create','link','push','pull','disconnect'].forEach(a=>{
   document.getElementById('gist-'+a).addEventListener('click',()=>doSync(a));
 });
+
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)maybeAutoPull()});
+window.addEventListener('focus',maybeAutoPull);
 
 /* ========================= INIT ========================= */
 document.addEventListener('click',e=>{
@@ -813,11 +898,14 @@ document.addEventListener('click',e=>{
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 });
 
-function afterDataChange(){
-  saveState();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
+function afterDataChange(opts){
+  if(opts&&opts.silent)saveStateRaw();
+  else saveState();
+  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
   if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 
 syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
 switchTab(location.hash.slice(1));
+maybeAutoPull();

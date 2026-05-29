@@ -88,7 +88,42 @@
 
     <div class="card">
       <h2>Синхронизация (GitHub Gist)</h2>
-      <p class="hint">Хранит твоё состояние в <b>приватном</b> gist на GitHub — синхронизация между устройствами без своего бэкенда. Нужен Personal Access Token со scope <code>gist</code> (создаётся на <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a>). Токен лежит только в этом браузере — никуда, кроме <code>api.github.com</code>, не уходит. Сами данные шлются в gist в открытом виде, поэтому держи gist приватным и не клади туда то, что не доверил бы своему GitHub-аккаунту.</p>
+      <p class="hint">Хранит твоё состояние в <b>приватном</b> gist на GitHub — синхронизация между устройствами без своего бэкенда. Авто-push через ~5 сек после изменения, авто-pull при возврате на вкладку.</p>
+      <details style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-weight:600">📖 Инструкция — как настроить</summary>
+        <div class="formulas" style="margin-top:10px">
+          <p><b>1. Создай Personal Access Token на GitHub.</b></p>
+          <ul>
+            <li>Открой <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">github.com/settings/tokens</a> → <b>Generate new token (classic)</b>.</li>
+            <li>Название — любое («clockifyAnalyzer sync»). Expiration — на год или <b>No expiration</b>.</li>
+            <li>Отметь <b>только</b> scope <code>gist</code>. Остальное не нужно.</li>
+            <li>Нажми <b>Generate token</b> и скопируй его (он показывается один раз).</li>
+            <li>Альтернатива — Fine-grained token: <b>Account permissions → Gists: Read and write</b>.</li>
+          </ul>
+          <p><b>2. На первом устройстве (откуда переносишь данные):</b></p>
+          <ul>
+            <li>Вставь токен в поле <b>Personal Access Token</b> ниже.</li>
+            <li>Нажми <b>«➕ Создать новый gist»</b>, подтверди — создастся приватный gist с текущим состоянием.</li>
+            <li>В статусе появится <code>Gist: abc123...</code> со ссылкой. Скопируй ID (или просто URL — пригодится на втором устройстве).</li>
+          </ul>
+          <p><b>3. На втором устройстве:</b></p>
+          <ul>
+            <li>Создай ещё один токен (или используй тот же — но лучше отдельный для каждого устройства, чтобы можно было индивидуально отозвать).</li>
+            <li>Вставь токен в поле ниже.</li>
+            <li>Вставь Gist ID или URL с первого устройства в поле <b>Gist ID или URL</b>.</li>
+            <li>Нажми <b>«🔗 Связать (pull)»</b>, подтверди затирание локальных данных.</li>
+          </ul>
+          <p><b>4. Дальше работает само.</b> Локальные изменения улетают в gist через ~5 сек после паузы в правках. При переключении на вкладку (или возврате с другого устройства) свежие данные подтягиваются автоматически. Кнопки <b>Push</b> / <b>Pull</b> — на случай ручной операции или если статус говорит про конфликт.</p>
+          <p><b>Если что-то пошло не так:</b></p>
+          <ul>
+            <li><b>«Неверный токен»</b> — токен истёк, без scope <code>gist</code>, или скопирован с пробелом.</li>
+            <li><b>«Gist не найден»</b> — опечатка в ID, gist удалили, или токен из другого аккаунта.</li>
+            <li><b>«В gist нет файла finance_state.json»</b> — кто-то редактировал gist вручную и сломал. Сделай <b>Push</b> с рабочего устройства, чтобы перезаписать.</li>
+            <li><b>Конфликт-тост «есть свежие данные + локальные изменения»</b> — реши вручную: <b>Push</b> (отправить локальное в gist) или <b>Pull</b> (взять из gist, потерять локальные).</li>
+          </ul>
+          <p><b>Безопасность.</b> Токен лежит только в <code>localStorage</code> этого браузера и шлётся исключительно на <code>api.github.com</code>. Данные в gist хранятся в открытом виде, поэтому держи gist приватным. Если боишься утечки — отзови токен на github.com/settings/tokens, сам gist это не затронет.</p>
+        </div>
+      </details>
       <div class="row">
         <div class="field" style="flex:1;min-width:240px"><label>Personal Access Token (<code>gist</code>)</label><input type="password" id="gist-token" placeholder="ghp_..." autocomplete="off"></div>
       </div>

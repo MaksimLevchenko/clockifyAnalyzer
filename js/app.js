@@ -715,6 +715,88 @@ document.getElementById('fc-end').addEventListener('change',()=>runForecast(true
 const fcAnchor=document.getElementById('fc-anchor');
 if(fcAnchor)fcAnchor.addEventListener('change',()=>runForecast(true));
 
+/* ========================= GIST SYNC ========================= */
+function syncIsDirty(){
+  const cfg=loadGistCfg();
+  if(!cfg.lastSyncedLocalAt)return true;
+  return state.updatedAt!==cfg.lastSyncedLocalAt;
+}
+
+function renderSync(){
+  const cfg=loadGistCfg();
+  const tokInp=document.getElementById('gist-token');
+  const idInp=document.getElementById('gist-id');
+  if(cfg.token&&!tokInp.value)tokInp.value=cfg.token;
+  if(cfg.gistId&&!idInp.value)idInp.value=cfg.gistId;
+  const s=document.getElementById('gist-status');
+  if(!cfg.token||!cfg.gistId){
+    s.innerHTML='Не настроено. Вставь токен и нажми <b>«Создать новый gist»</b>, либо вставь токен + ID существующего gist и нажми <b>«Связать»</b>.';
+    return;
+  }
+  const linkHtml=cfg.gistUrl?` · <a href="${esc(cfg.gistUrl)}" target="_blank" rel="noopener">открыть на GitHub</a>`:'';
+  const last=cfg.lastSyncedRemoteAt?esc(cfg.lastSyncedRemoteAt.replace('T',' ').slice(0,19))+' UTC':'—';
+  const dirty=syncIsDirty();
+  const stateLine=dirty
+    ?'<b style="color:#b1462c">⚠ есть локальные изменения — нажми Push</b>'
+    :'<b style="color:#2f6b4f">✓ всё синхронизировано</b>';
+  s.innerHTML=`Gist: <code>${esc(cfg.gistId)}</code>${linkHtml}<br>Последняя синхронизация: <b>${last}</b> · ${stateLine}`;
+}
+
+async function doSync(action){
+  const token=document.getElementById('gist-token').value.trim();
+  const idRaw=document.getElementById('gist-id').value.trim();
+  const cfg=loadGistCfg();
+  try{
+    if(action==='create'){
+      if(!token){toast('Сначала вставь токен');return}
+      if(!confirm('Создать новый приватный gist и загрузить туда текущее состояние?'))return;
+      const res=await gistCreate(token,state);
+      saveGistCfg({token,gistId:res.id,gistUrl:res.url,
+        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt});
+      renderSync();toast('Gist создан · '+res.id);
+    }else if(action==='link'){
+      if(!token){toast('Сначала вставь токен');return}
+      const id=parseGistId(idRaw);
+      if(!id){toast('Не похоже на Gist ID или URL');return}
+      const hasLocal=state.entries.length||state.checkpoints.length||state.expenses.length;
+      if(hasLocal&&!confirm('Скачать состояние из gist и заменить локальные данные? Локальное состояние будет потеряно.'))return;
+      const res=await gistPull(token,id);
+      state=migrate(res.state);
+      saveStateRaw();
+      saveGistCfg({token,gistId:id,gistUrl:res.url,
+        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt});
+      syncInputs();afterDataChange();renderSync();
+      toast('Связано · данные из gist загружены');
+    }else if(action==='push'){
+      if(!cfg.token||!cfg.gistId){toast('Сначала настрой синхронизацию');return}
+      const res=await gistPush(cfg.token,cfg.gistId,state);
+      saveGistCfg(Object.assign({},cfg,{gistUrl:res.url||cfg.gistUrl,
+        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt}));
+      renderSync();toast('Push успешен');
+    }else if(action==='pull'){
+      if(!cfg.token||!cfg.gistId){toast('Сначала настрой синхронизацию');return}
+      if(syncIsDirty()&&!confirm('Локально есть несинхронизированные изменения — перезаписать их данными из gist?'))return;
+      const res=await gistPull(cfg.token,cfg.gistId);
+      state=migrate(res.state);
+      saveStateRaw();
+      saveGistCfg(Object.assign({},cfg,{gistUrl:res.url||cfg.gistUrl,
+        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt}));
+      syncInputs();afterDataChange();renderSync();
+      toast('Pull успешен');
+    }else if(action==='disconnect'){
+      if(!confirm('Отключить синхронизацию? Токен и Gist ID будут удалены из браузера (сам gist на GitHub останется).'))return;
+      clearGistCfg();
+      document.getElementById('gist-token').value='';
+      document.getElementById('gist-id').value='';
+      renderSync();toast('Синхронизация отключена');
+    }
+  }catch(e){toast('Ошибка: '+e.message)}
+}
+
+['create','link','push','pull','disconnect'].forEach(a=>{
+  document.getElementById('gist-'+a).addEventListener('click',()=>doSync(a));
+});
+
 /* ========================= INIT ========================= */
 document.addEventListener('click',e=>{
   const b=e.target.closest('#vac-add');if(!b)return;
@@ -732,10 +814,10 @@ document.addEventListener('click',e=>{
 });
 
 function afterDataChange(){
-  saveState();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();
+  saveState();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
   if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 
-syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();
+syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
 switchTab(location.hash.slice(1));

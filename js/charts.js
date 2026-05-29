@@ -138,6 +138,16 @@ function drawForecast(id,r,startBal){
   x.setLineDash([4,4]);x.strokeStyle=COL.muted;
   x.beginPath();x.moveTo(pad.l,py(startBal));x.lineTo(w-pad.r,py(startBal));x.stroke();
   x.setLineDash([]);
+  // zero line — visible only when the chart's Y range crosses 0
+  if(mn<=0&&mx>=0){
+    const zy=py(0);
+    x.setLineDash([2,3]);x.strokeStyle=COL.terra;x.lineWidth=1.5;
+    x.beginPath();x.moveTo(pad.l,zy);x.lineTo(w-pad.r,zy);x.stroke();
+    x.setLineDash([]);x.lineWidth=1;
+    x.fillStyle=COL.terra;x.textAlign='right';
+    x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
+    x.fillText('0',pad.l-4,zy+3);
+  }
   // mean
   x.beginPath();r.mean.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
   x.strokeStyle=COL.green;x.lineWidth=2.5;x.stroke();

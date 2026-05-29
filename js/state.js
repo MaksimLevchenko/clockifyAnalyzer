@@ -26,15 +26,20 @@ function migrate(s){
   s.cashflowExcluded=Array.isArray(s.cashflowExcluded)?s.cashflowExcluded.filter(x=>x&&x.from&&x.to):[];
   for(const c of s.checkpoints)if(!c.kind)c.kind='actual';
   for(const e of s.expenses)if(e.growthRate==null)e.growthRate=0;
+  if(!s.updatedAt)s.updatedAt=new Date().toISOString();
   delete s.balance;delete s.balanceDate;
   return s;
 }
 
 let state = migrate(loadState());
 
-function saveState(){
+function saveStateRaw(){
   try{localStorage.setItem(LS_KEY,JSON.stringify(state))}
   catch(e){toast('Не удалось сохранить в браузере — используй экспорт в файл')}
+}
+function saveState(){
+  state.updatedAt=new Date().toISOString();
+  saveStateRaw();
 }
 
 function cur(){return state.currency||'USD'}

@@ -853,16 +853,27 @@ async function doSync(action){
     }else if(action==='link'){
       if(!token){toast('Сначала вставь токен');return}
       const id=parseGistId(idRaw);
-      if(!id){toast('Не похоже на Gist ID или URL');return}
+      if(!id){toast('Вставь ID или URL gist в поле «Gist ID или URL»');return}
+      if(pushInFlight||pullInFlight){toast('Подожди, синхронизация уже идёт');return}
       const hasLocal=state.entries.length||state.checkpoints.length||state.expenses.length;
-      if(hasLocal&&!confirm('Скачать состояние из gist и заменить локальные данные? Локальное состояние будет потеряно.'))return;
-      const res=await gistPull(token,id);
-      state=migrate(res.state);
-      afterDataChange({silent:true});
-      saveGistCfg({token,gistId:id,gistUrl:res.url,
-        lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt,lastError:''});
-      nextAllowedPushAt=0;syncInputs();renderSync();
-      toast('Связано · данные из gist загружены');
+      if(hasLocal&&!confirm('Скачать состояние из gist и заменить локальные данные? Локальное состояние будет потеряно.')){
+        toast('Отменено');return;
+      }
+      pullInFlight=true;clearAutoPush();renderSync();
+      try{
+        const res=await gistPull(token,id);
+        state=migrate(res.state);
+        afterDataChange({silent:true});
+        saveGistCfg({token,gistId:id,gistUrl:res.url,
+          lastSyncedRemoteAt:res.updatedAt,lastSyncedLocalAt:state.updatedAt,lastError:''});
+        nextAllowedPushAt=0;syncInputs();renderSync();
+        toast('Связано · данные из gist загружены ('+state.entries.length+' записей)');
+      }catch(e){
+        saveGistCfg(Object.assign({},loadGistCfg(),{lastError:e.message}));
+        toast('Ошибка: '+e.message);
+      }finally{
+        pullInFlight=false;renderSync();
+      }
     }else if(action==='push'){await pushNow(false);
     }else if(action==='pull'){await pullNow(false);
     }else if(action==='disconnect'){

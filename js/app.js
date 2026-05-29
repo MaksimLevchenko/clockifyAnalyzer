@@ -814,12 +814,34 @@ function maybeAutoPull(){
   pullNow(true);
 }
 
+function updateSyncButtons(){
+  const cfg=loadGistCfg();
+  const token=document.getElementById('gist-token').value.trim();
+  const idRaw=document.getElementById('gist-id').value.trim();
+  const id=parseGistId(idRaw);
+  const busy=pushInFlight||pullInFlight;
+  const configured=!!(cfg.token&&cfg.gistId);
+  const set=(elId,disabled,title)=>{
+    const b=document.getElementById(elId);
+    b.disabled=disabled;
+    if(disabled)b.setAttribute('title',title||'');
+    else b.removeAttribute('title');
+  };
+  const busyT='Идёт синхронизация — подожди';
+  set('gist-create',!token||busy,busy?busyT:'Сначала вставь токен в поле выше');
+  set('gist-link',!token||!id||busy,busy?busyT:!token?'Вставь токен':!id?'Вставь Gist ID или URL':'');
+  set('gist-push',!configured||busy,busy?busyT:'Сначала создай или свяжи gist');
+  set('gist-pull',!configured||busy,busy?busyT:'Сначала создай или свяжи gist');
+  set('gist-disconnect',!configured||busy,busy?busyT:'Нечего отключать');
+}
+
 function renderSync(){
   const cfg=loadGistCfg();
   const tokInp=document.getElementById('gist-token');
   const idInp=document.getElementById('gist-id');
   if(cfg.token&&!tokInp.value)tokInp.value=cfg.token;
   if(cfg.gistId&&!idInp.value)idInp.value=cfg.gistId;
+  updateSyncButtons();
   const s=document.getElementById('gist-status');
   if(!cfg.token||!cfg.gistId){
     s.innerHTML='Не настроено. Вставь токен и нажми <b>«Создать новый gist»</b>, либо вставь токен + ID существующего gist и нажми <b>«Связать»</b>.';
@@ -888,6 +910,9 @@ async function doSync(action){
 
 ['create','link','push','pull','disconnect'].forEach(a=>{
   document.getElementById('gist-'+a).addEventListener('click',()=>doSync(a));
+});
+['gist-token','gist-id'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',updateSyncButtons);
 });
 
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)maybeAutoPull()});

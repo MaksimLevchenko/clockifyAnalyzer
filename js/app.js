@@ -309,7 +309,7 @@ function renderActualExpenses(){
   const card=document.getElementById('card-actual-expenses');
   if(!card)return;
   const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
-    excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate
+    excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,payDays:state.payDays
   });
   if(!cf){card.style.display='none';return}
   card.style.display='';
@@ -336,8 +336,12 @@ function renderActualExpenses(){
   const warn=weak
     ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Слабый сигнал:</b> всего ${used} интервал(ов). Авто-оценка ненадёжна — добавь хотя бы 3 чекпоинта с разрывом в неделю-месяц, чтобы получить устойчивую статистику.</div>`
     :'';
+  const hasEntries=state.entries.length>0;
+  const noPdWarn=hasEntries&&(!state.payDays||!state.payDays.length)
+    ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Не настроены дни выплаты:</b> расчёт считает, что доход начисляется ежедневно. Если зарплата приходит раз в месяц/полмесяца, неоплаченная работа в Clockify ошибочно засчитывается как «потрачено» — авто-расход завышен. Настрой <b>Дни выплаты</b> выше, чтобы получить корректную оценку.</div>`
+    :'';
   sm.innerHTML=`Реальный отток: <b>${fmt(cf.monthlyNetOut||0)} ${c}/мес</b> по ${used} интервалу(ам)`
-    +(rec!=null?` · последние 90 дн.: <b>${fmt(rec)} ${c}/мес</b>`:'')+cmp+taxNote+est+warn;
+    +(rec!=null?` · последние 90 дн.: <b>${fmt(rec)} ${c}/мес</b>`:'')+cmp+taxNote+est+warn+noPdWarn;
   const tb=document.querySelector('#actual-expenses-table tbody');
   tb.innerHTML=cf.intervals.map(it=>{
     const exKey=it.from+'|'+it.to;
@@ -557,7 +561,7 @@ function runForecast(auto){
   if(!state.checkpoints.length){if(!auto)toast('Добавь хотя бы один чекпоинт баланса');return}
   try{
     const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
-      excluded:state.cashflowExcluded,taxRate:state.taxRate
+      excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,payDays:state.payDays
     });
     const ae=autoExpenseEstimate(cf);
     const anchorEl=document.getElementById('fc-anchor');

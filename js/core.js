@@ -478,29 +478,41 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     p10.push(sd[Math.floor(.1*nSims)]);p90.push(sd[Math.floor(.9*nSims)]);
     if(targetDateSet.has(ds))targetSnaps.set(ds,{di,snap:Float64Array.from(run)});
   }
-  /* Calibration uses ONLY actual checkpoints. Two improvements:
-     1) extraWidth is the QUADRATIC sum of per-calibration residuals
-        (independent-error addition) instead of linear, so 3 small misses
-        don't pile up the same way as one big miss.
-     2) The widening is realized as PER-SIM Gaussian noise added to
-        run/minRun — keeping the displayed band, the final distribution,
-        and midPeriodNegProb internally consistent. */
+  /* Calibration uses ONLY actual checkpoints. Two design choices:
+     1) Shift is LINEARLY INTERPOLATED between consecutive actual cps
+        (virtual anchor at di=-1, sh=0 represents the start balance).
+        Step-shift caused the trajectory to look "ignorant" between cps
+        and jump at the cp itself — interpolation gradually nudges it
+        toward the next known balance.
+     2) extraWidth is the QUADRATIC sum of per-calibration residuals
+        (independent-error addition) — 3 small misses don't pile up
+        the same way as one big miss. Widening is per-sim Gaussian noise. */
   const cpMap=new Map(actualCps.filter(c=>c.date>balanceDate&&c.date<=end).map(c=>[c.date,c.balance]));
   const CALIB_WIDEN_K=0.4;
-  const shiftHistory=new Float64Array(days.length);
-  let shift=0,extraWidthSq=0;
+  const anchors=[{di:-1,sh:0}];
+  let extraWidthSq=0;
   for(let i=0;i<days.length;i++){
     if(cpMap.has(days[i])){
-      const dCal=cpMap.get(days[i])-(mean[i]+shift);
-      shift+=dCal;
+      const reqShift=cpMap.get(days[i])-mean[i];
+      const dCal=reqShift-anchors[anchors.length-1].sh;
       extraWidthSq+=(dCal*CALIB_WIDEN_K)*(dCal*CALIB_WIDEN_K);
+      anchors.push({di:i,sh:reqShift});
     }
-    shiftHistory[i]=shift;
-    mean[i]+=shift;
   }
+  const shiftHistory=new Float64Array(days.length);
+  {
+    let segIdx=0;
+    for(let i=0;i<days.length;i++){
+      while(segIdx+1<anchors.length&&i>anchors[segIdx+1].di)segIdx++;
+      const a=anchors[segIdx];
+      const b=segIdx+1<anchors.length?anchors[segIdx+1]:null;
+      const sh=b?a.sh+(b.sh-a.sh)*(i-a.di)/(b.di-a.di):a.sh;
+      shiftHistory[i]=sh;
+      mean[i]+=sh;
+    }
+  }
+  const finalShift=days.length?shiftHistory[days.length-1]:0;
   const extraWidth=Math.sqrt(extraWidthSq);
-  /* Box-Muller draws once per sim, applied to run/minRun. Same noise
-     is used for target-date snapshots so they stay consistent. */
   const shiftExtra=new Float64Array(nSims);
   if(extraWidth>0){
     for(let s=0;s<nSims;s++){
@@ -509,15 +521,12 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     }
   }
   for(let s=0;s<nSims;s++){
-    run[s]+=shift+shiftExtra[s];
-    minRun[s]+=shift+shiftExtra[s];
+    run[s]+=finalShift+shiftExtra[s];
+    minRun[s]+=finalShift+shiftExtra[s];
   }
-  /* Recompute p10/p90 across the trajectory with widening applied — use
-     the analytic widening from extraWidth (per-sim sample noise would
-     require trajectory-wide tracking which we don't keep). */
   for(let i=0;i<days.length;i++){
-    p10[i]+=shift-extraWidth;
-    p90[i]+=shift+extraWidth;
+    p10[i]+=shiftHistory[i]-extraWidth;
+    p90[i]+=shiftHistory[i]+extraWidth;
   }
   /* Compute P(target reached) at each target date using snapshots,
      applying the per-day shift and per-sim widening noise. */
@@ -565,7 +574,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     finalMin:minR,finalMax:maxR,negativeProb:negCount/nSims,
     midPeriodNegProb:midNegCount/nSims,
     totalExpenses:te,totalAutoExpense:autoTotal,totalIncomes:ti,
-    totalExpectedWork,calibrationShift:shift,taxRate,
+    totalExpectedWork,calibrationShift:finalShift,taxRate,
     unpaidAtEnd:unpaidMean,initialUnpaid:init,
     nextSalary,
     targetReachProb,
@@ -593,6 +602,11 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
      the tax amount.
      opts.fallbackRate — when an entry has rate=0 (e.g., Clockify CSV
      without billable rate configured), use this rate instead.
+     opts.payDays — month-day numbers of salary deposits. When set,
+     `earned` counts only work that was actually paid into the balance
+     during (A,B] (= work in (lastPay≤A, lastPay≤B]), not work performed
+     in the interval. Without this, unpaid Clockify hours get charged as
+     "implicit outflow" which is the dominant source of bogus auto-expense.
      opts.referenceDate — "now" for the recent-90 window (defaults to
      today()). Pass for deterministic tests. */
   opts=opts||{};
@@ -600,6 +614,7 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   const taxRate=Math.max(0,Math.min(1,(opts.taxRate||0)/100));
   const fallbackRate=Number(opts.fallbackRate)||0;
   const refDate=opts.referenceDate||today();
+  const payDays=opts.payDays&&opts.payDays.length?opts.payDays:null;
   const excluded=new Set((opts.excluded||[]).map(x=>x.from+'|'+x.to));
   const sorted=[...cps].filter(c=>(c.kind||'actual')==='actual')
     .sort((a,b)=>a.date<b.date?-1:1);
@@ -610,8 +625,10 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
     const A=sorted[i-1],B=sorted[i];
     const dur=daysBetween(A.date,B.date);
     if(dur<=0)continue;
+    const earnFrom=payDays?lastPayDayBefore(A.date,payDays):A.date;
+    const earnTo=payDays?lastPayDayBefore(B.date,payDays):B.date;
     let earnedGross=0;
-    for(const e of es||[])if(e.date>A.date&&e.date<=B.date){
+    if(earnTo>earnFrom)for(const e of es||[])if(e.date>earnFrom&&e.date<=earnTo){
       const r=e.rate>0?e.rate:fallbackRate;
       earnedGross+=e.hours*r;
     }

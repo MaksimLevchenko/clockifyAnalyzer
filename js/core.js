@@ -200,6 +200,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed){
   const mean=[],p10=[],p90=[];const payDayDates=[];
   const expectedWork=[],expectedExp=[],expectedInc=[];
   let mr=balance, mrUnpaid=init;
+  let nextSalary=null;
   for(let di=0;di<days.length;di++){
     const ds=days[di],w=wd(ds),pool=pools[w],out=expMap.get(ds)||0,inEv=incMap.get(ds)||0;
     const payToday=useDelayed&&isPay(ds);
@@ -207,12 +208,15 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed){
     expectedWork.push(expH[w]*rate);
     expectedExp.push(out);
     expectedInc.push(inEv);
+    const captureNext=payToday&&!nextSalary;
+    const todayBonuses=captureNext?new Float64Array(nSims):null;
     for(let s=0;s<nSims;s++){
       let work=0;
       if(rand()<pWork[w]&&pool.length)work=pool[(rand()*pool.length)|0]*rate;
       if(useDelayed){
         unpaid[s]+=work;
         const bonus=payToday?unpaid[s]:0;
+        if(captureNext)todayBonuses[s]=bonus;
         if(payToday)unpaid[s]=0;
         run[s]+=bonus+inEv-out;
       }else{
@@ -222,6 +226,16 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed){
     if(useDelayed){
       mrUnpaid+=expH[w]*rate;
       const bonus=payToday?mrUnpaid:0;
+      if(captureNext){
+        const sb=Float64Array.from(todayBonuses).sort();
+        nextSalary={
+          date:ds,mean:bonus,
+          median:sb[Math.floor(.5*nSims)],
+          p10:sb[Math.floor(.1*nSims)],
+          p90:sb[Math.floor(.9*nSims)],
+          min:sb[0],max:sb[nSims-1]
+        };
+      }
       if(payToday)mrUnpaid=0;
       mr+=bonus+inEv-out;
     }else{
@@ -265,6 +279,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed){
     finalMin:minR,finalMax:maxR,negativeProb:negCount/nSims,
     totalExpenses:te,totalIncomes:ti,totalExpectedWork,calibrationShift:shift,
     unpaidAtEnd:unpaidMean,initialUnpaid:init,
+    nextSalary,
     model:{pWork:[...pWork],avgH,expH:[...expH],sampleSizes},
     perDay:{work:expectedWork,exp:expectedExp,inc:expectedInc},
     finalRuns:[...run]

@@ -418,6 +418,10 @@ function renderForecastSummary(r,end){
 
   const metrics=[];
   metrics.push(`<div class="fc-metric"><div class="k">Прирост за период</div><div class="v" style="color:${growthClr}">${totalGrowth>=0?'+':''}${fmt(totalGrowth)}</div><div class="sub">${c}</div></div>`);
+  if(r.nextSalary){
+    const ns=r.nextSalary;
+    metrics.push(`<div class="fc-metric"><div class="k">Следующая зарплата</div><div class="v green">+${fmt(ns.mean)}</div><div class="sub">${esc(dateRu(ns.date,true))} · ${c} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>`);
+  }
   metrics.push(`<div class="fc-metric"><div class="k">Интервал 80%</div><div class="v" style="font-size:14px">${fmt(r.finalP10)} — ${fmt(r.finalP90)}</div><div class="sub">${c}</div></div>`);
   metrics.push(`<div class="fc-metric"><div class="k">Доход от работы / мес</div><div class="v green">${fmt(monthlyWork)}</div><div class="sub">${c}/мес в среднем</div></div>`);
   if(monthlyExp)metrics.push(`<div class="fc-metric"><div class="k">Расходы / мес</div><div class="v terra">${fmt(monthlyExp)}</div><div class="sub">${c}/мес в среднем</div></div>`);

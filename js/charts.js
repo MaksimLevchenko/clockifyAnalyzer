@@ -147,6 +147,20 @@ function drawForecast(id,r,startBal){
   x.fillStyle=COL.green;(r.incomeDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(px(i),py(r.mean[i]),3,0,7);x.fill()}});
   x.fillStyle=COL.gold;x.strokeStyle=COL.ink;x.lineWidth=1;
   (r.checkpointDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(px(i),py(r.mean[i]),5,0,7);x.fill();x.stroke()}});
+  /* Target checkpoints — solid terra-coloured dot drawn at the user's
+     TARGET balance (not the modeled mean), so the user can see "where I
+     want to be" vs "where the model predicts". A small vertical guide
+     line connects the dot to the mean curve at the same date. */
+  const tcps=(r.targetReachProb||[]).filter(t=>dmap.has(t.date));
+  tcps.forEach(t=>{
+    const i=dmap.get(t.date);if(i==null)return;
+    const tx=px(i),ty=py(t.balance),my=py(r.mean[i]);
+    x.strokeStyle=COL.terra;x.lineWidth=1;x.setLineDash([2,3]);
+    x.beginPath();x.moveTo(tx,Math.min(ty,my));x.lineTo(tx,Math.max(ty,my));x.stroke();
+    x.setLineDash([]);
+    x.fillStyle=COL.terra;x.strokeStyle=COL.ink;x.lineWidth=1;
+    x.beginPath();x.arc(tx,ty,5,0,7);x.fill();x.stroke();
+  });
   // pay-day ticks at top of chart
   x.strokeStyle=COL.muted;x.lineWidth=1.5;
   (r.payDayDates||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.moveTo(px(i),pad.t);x.lineTo(px(i),pad.t+8);x.stroke()}});
@@ -160,11 +174,16 @@ function drawForecast(id,r,startBal){
   const incSet=new Set(r.incomeDays||[]);
   const cpSet=new Set(r.checkpointDays||[]);
   const paySet=new Set(r.payDayDates||[]);
+  const tgtByDate=new Map((r.targetReachProb||[]).map(t=>[t.date,t]));
   const items=r.days.map((d,i)=>{
     const dt=dateRu(d,true);const wn=WD[wd(d)];
     let html=`<b>${esc(dt)} (${wn})</b><br>Среднее: <b>${fmt(r.mean[i])} ${ccy}</b><br>Интервал 80%: ${fmt(r.p10[i])} — ${fmt(r.p90[i])} ${ccy}`;
     if(paySet.has(d))html+=`<br><span class="sub">💵 день выплаты</span>`;
     if(cpSet.has(d))html+=`<br><span style="color:#e6c982">★ чекпоинт</span>`;
+    if(tgtByDate.has(d)){
+      const t=tgtByDate.get(d);
+      html+=`<br><span style="color:#a9792a">◇ цель ${fmt(t.balance)} ${ccy} — достижимость ${(t.prob*100).toFixed(0)}%</span>`;
+    }
     if(expSet.has(d))html+=`<br><span style="color:#e89a85">● расход</span>`;
     if(incSet.has(d))html+=`<br><span style="color:#88c5a8">● поступление</span>`;
     return{cx:px(i),cy:py(r.mean[i]),html};
@@ -356,6 +375,10 @@ function drawFinalDist(r){
 function drawMonthlyForecast(r){
   if(!r||!r.perDay||r.days.length<30){showChart('ch-fc-monthly',false);return}
   showChart('ch-fc-monthly',true);
+  /* perDay.work is already net of tax (post taxRate). Apply the same
+     factor to historical income from state.entries so the chart is
+     internally consistent. */
+  const taxFactor=1-(r.taxRate||0);
   const byMonth=new Map();
   for(let i=0;i<r.days.length;i++){
     const k=r.days[i].slice(0,7);
@@ -372,7 +395,7 @@ function drawMonthlyForecast(r){
       const seenDates=new Set();
       for(const e of state.entries){
         if(e.date.slice(0,7)===k&&e.date<=r.startDate){
-          v.workAct+=e.hours*e.rate;seenDates.add(e.date);
+          v.workAct+=e.hours*e.rate*taxFactor;seenDates.add(e.date);
         }
       }
       v.daysAct=seenDates.size;

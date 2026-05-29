@@ -20,6 +20,12 @@ function migrate(s){
   }
   s.rate=s.rate||0;
   s.currency=s.currency||'USD';
+  s.halfLife=Number.isFinite(+s.halfLife)?Math.max(7,Math.min(365,+s.halfLife)):60;
+  s.taxRate=Number.isFinite(+s.taxRate)?Math.max(0,Math.min(100,+s.taxRate)):0;
+  s.vacations=Array.isArray(s.vacations)?s.vacations.filter(v=>v&&v.from&&v.to):[];
+  s.cashflowExcluded=Array.isArray(s.cashflowExcluded)?s.cashflowExcluded.filter(x=>x&&x.from&&x.to):[];
+  for(const c of s.checkpoints)if(!c.kind)c.kind='actual';
+  for(const e of s.expenses)if(e.growthRate==null)e.growthRate=0;
   delete s.balance;delete s.balanceDate;
   return s;
 }

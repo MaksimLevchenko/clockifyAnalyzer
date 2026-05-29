@@ -226,3 +226,7 @@ details>summary:hover{color:var(--ink)}
 
   .scroll{max-height:60vh}
 }
+
+.vac-row{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--paper2); margin-bottom:6px; font-size:13.5px}
+.vac-row b{font-weight:600}
+.cp-kind-sel{font-family:var(--mono); background:var(--paper2); border:1px solid var(--line); border-radius:5px}

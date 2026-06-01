@@ -280,16 +280,16 @@ function lastPayDayBefore(date,payDays){
 }
 
 function initialUnpaidWork(es,anchorDate,payDays,fallbackRate){
-  if(!payDays||!payDays.length)return 0;
+  if(!payDays||!payDays.length)return{money:0,hours:0};
   const since=addDays(lastPayDayBefore(anchorDate,payDays),1);
   const fb=Number(fallbackRate)||0;
-  let sum=0;
+  let money=0,hours=0;
   for(const e of es){
     if(e.date>=since&&e.date<=anchorDate){
-      const r=e.rate>0?e.rate:fb;sum+=e.hours*r;
+      const r=e.rate>0?e.rate:fb;money+=e.hours*r;hours+=e.hours;
     }
   }
-  return sum;
+  return{money,hours};
 }
 
 /* ----- forecast ----- */
@@ -335,7 +335,9 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const isPay=ds=>paySet.has(Number(ds.slice(8,10)));
   /* Initial unpaid pool is also net-of-tax — the user's checkpoint balance
      is post-tax, and pending salary will also arrive post-tax. */
-  const init=useDelayed?initialUnpaidWork(es,balanceDate,payDays,rate)*(1-taxRate):0;
+  const initPool=useDelayed?initialUnpaidWork(es,balanceDate,payDays,rate):{money:0,hours:0};
+  const init=initPool.money*(1-taxRate);
+  const initHours=initPool.hours;
   const rand=mulberry32(seed);
 
   /* ----- week-block bootstrap setup -----
@@ -413,6 +415,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const expectedWork=[],expectedExp=[],expectedInc=[];
   const vacationDays=[];
   let nextSalary=null;
+  let cumGrossExpH=0;
   /* Snapshots of per-sim run[] at each TARGET checkpoint date — used
      to compute P(reaching) for that target after calibration. */
   const targetDateSet=new Set(targetCps.filter(c=>c.date>balanceDate&&c.date<=end).map(c=>c.date));
@@ -425,6 +428,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     const payToday=useDelayed&&isPay(ds);
     if(payToday)payDayDates.push(ds);
     const grossExpH=isVac?0:wm.expH[w];
+    cumGrossExpH+=grossExpH;
     expectedWork.push(grossExpH*rate*(1-taxRate));
     /* Auto-expense is normalized per CALENDAR month, matching the
        `daily` expense kind: amount/daysInMonth(ds) so monthly total
@@ -467,7 +471,8 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
         median:sb[Math.floor(.5*nSims)],
         p10:sb[Math.floor(.1*nSims)],
         p90:sb[Math.floor(.9*nSims)],
-        min:sb[0],max:sb[nSims-1]
+        min:sb[0],max:sb[nSims-1],
+        expHours:initHours+cumGrossExpH
       };
     }
     /* Mean track is the EMPIRICAL mean of the simulation runs (was
@@ -575,7 +580,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     midPeriodNegProb:midNegCount/nSims,
     totalExpenses:te,totalAutoExpense:autoTotal,totalIncomes:ti,
     totalExpectedWork,calibrationShift:finalShift,taxRate,
-    unpaidAtEnd:unpaidMean,initialUnpaid:init,
+    unpaidAtEnd:unpaidMean,initialUnpaid:init,initialUnpaidHours:initHours,
     nextSalary,
     targetReachProb,
     model:{pWork:[...wm.pWork],avgH:[...wm.avgH],expH:[...wm.expH],

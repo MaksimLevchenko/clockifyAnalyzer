@@ -645,12 +645,24 @@ function renderForecastSummary(r,end){
     }
   }
 
-  const metrics=[];
-  metrics.push(`<div class="fc-metric"><div class="k">Прирост за период</div><div class="v" style="color:${growthClr}">${totalGrowth>=0?'+':''}${fmt(totalGrowth)}</div><div class="sub">${c}</div></div>`);
+  let payout='';
   if(r.nextSalary){
     const ns=r.nextSalary;
-    metrics.push(`<div class="fc-metric"><div class="k">Следующая зарплата</div><div class="v green">+${fmt(ns.mean)}</div><div class="sub">${esc(dateRu(ns.date,true))} · ${c} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>`);
+    const unpaidH=r.initialUnpaidHours||0;
+    const expH=ns.expHours||0;
+    payout=`<div class="fc-payout">
+      <div class="fc-payout-head">💵 Зарплата и невыплаченное</div>
+      <div class="fc-payout-grid">
+        <div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.initialUnpaid)} ${c}</div><div class="sub">после налога · накоплено с прошлой выплаты</div></div>
+        <div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${unpaidH.toFixed(1)} ч</div><div class="sub">отработано, но ещё не оплачено</div></div>
+        <div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>
+        <div class="po"><div class="k">Ожидаемые часы</div><div class="v">${expH.toFixed(1)} ч</div><div class="sub">войдут в ближайшую выплату</div></div>
+      </div>
+    </div>`;
   }
+
+  const metrics=[];
+  metrics.push(`<div class="fc-metric"><div class="k">Прирост за период</div><div class="v" style="color:${growthClr}">${totalGrowth>=0?'+':''}${fmt(totalGrowth)}</div><div class="sub">${c}</div></div>`);
   metrics.push(`<div class="fc-metric"><div class="k">Интервал 80%</div><div class="v" style="font-size:14px">${fmt(r.finalP10)} — ${fmt(r.finalP90)}</div><div class="sub">${c}</div></div>`);
   metrics.push(`<div class="fc-metric"><div class="k">Доход от работы / мес</div><div class="v green">${fmt(monthlyWork)}</div><div class="sub">${c}/мес${taxPct>0?` · после ${taxPct.toFixed(0)}% налога`:''}</div></div>`);
   if(monthlyExp)metrics.push(`<div class="fc-metric"><div class="k">Расходы / мес</div><div class="v terra">${fmt(monthlyExp)}</div><div class="sub">${c}/мес${monthlyManualExp&&monthlyAutoExp?` · ${fmt(monthlyManualExp)} введ. + ${fmt(monthlyAutoExp)} авто`:''}</div></div>`);
@@ -681,7 +693,7 @@ function renderForecastSummary(r,end){
   if(r.checkpointDays.length)metrics.push(`<div class="fc-metric"><div class="k">Калибровочных чекпоинтов</div><div class="v gold">${r.checkpointDays.length}</div></div>`);
   if(r.payDayDates.length)metrics.push(`<div class="fc-metric"><div class="k">Выплат в периоде</div><div class="v">${r.payDayDates.length}</div></div>`);
 
-  return `<div class="fc-breakdown">${bd.join('')}</div><div class="fc-metrics">${metrics.join('')}</div>`;
+  return `<div class="fc-breakdown">${bd.join('')}</div>${payout}<div class="fc-metrics">${metrics.join('')}</div>`;
 }
 
 function renderModelTable(r){

@@ -24,7 +24,11 @@ document.getElementById('file-merge').addEventListener('change',function(){readF
     state.entries=res.entries;
     if(!state.rate)state.rate=detectRate(state.entries);
     syncInputs();afterDataChange();
-    toast('Догружено: +'+res.added+' новых (дубликаты пропущены). Всего: '+state.entries.length);
+    let msg='Догружено: +'+res.added+' новых';
+    if(res.replaced)msg+=', заменено '+res.replaced+' (сдвиг времени)';
+    msg+=' (дубликаты пропущены). Всего: '+state.entries.length;
+    if(res.missing)msg+='. Вне экспорта оставлено: '+res.missing;
+    toast(msg);
   }catch(e){toast('Ошибка догрузки: '+e.message)}
 })});
 

@@ -71,13 +71,57 @@ function rowsToEntries(rows){
 function entryKey(e){return [e.start,e.project,Math.round(e.hours*1000)/1000,e.rate,e.description].join('|')}
 function byStart(a,b){return a.start<b.start?-1:a.start>b.start?1:0}
 
+/* Identity of a "logical record" ignoring time-of-day. When the user
+   redistributes hours onto old dates in Clockify the day stays the same but
+   the start time (and sometimes the duration) shifts — so two entries are the
+   same record if date/project/description/rate match. */
+function entryGroupKey(e){return [e.date,e.project,e.rate,e.description].join('|')}
+function startSecs(s){const t=(String(s).split('T')[1]||'00:00:00').split(':').map(Number);return(t[0]||0)*3600+(t[1]||0)*60+(t[2]||0)}
+const MERGE_HOURS_TOLERANCE=2.5;
+
+/* Догрузка: помимо пропуска точных дублей, распознаёт записи, у которых из-за
+   перераспределения сместилось время суток (и, в пределах ±2.5 ч, длительность),
+   и заменяет ими старые версии. Сопоставление пер-запись, 1-к-1, в рамках одной
+   группы entryGroupKey. Несопоставленные локальные записи не удаляются;
+   попавшие в диапазон дат экспорта считаются в `missing` для предупреждения. */
 function mergeEntries(o,n){
-  if(!o||!o.length)return{entries:n.slice().sort(byStart),added:n.length};
-  const have=new Set(o.map(entryKey));
-  let added=0;const c=o.slice();
-  for(const e of n){const k=entryKey(e);if(!have.has(k)){have.add(k);c.push(e);added++}}
-  c.sort(byStart);
-  return{entries:c,added};
+  if(!o||!o.length)return{entries:(n||[]).slice().sort(byStart),added:(n||[]).length,replaced:0,missing:0};
+  if(!n||!n.length)return{entries:o.slice().sort(byStart),added:0,replaced:0,missing:0};
+  let lo=n[0].date,hi=n[0].date;
+  for(const e of n){if(e.date<lo)lo=e.date;if(e.date>hi)hi=e.date}
+  const gOld=new Map(),gNew=new Map();
+  const group=(m,e)=>{const k=entryGroupKey(e);let a=m.get(k);if(!a){a=[];m.set(k,a)}a.push(e)};
+  for(const e of o)group(gOld,e);
+  for(const e of n)group(gNew,e);
+  const result=[],seen=new Set();
+  let added=0,replaced=0,missing=0;
+  const keep=e=>{result.push(e);seen.add(entryKey(e))};
+  for(const k of new Set([...gOld.keys(),...gNew.keys()])){
+    const OLD=gOld.get(k)||[],NEW=gNew.get(k)||[];
+    const oUsed=OLD.map(()=>false),nUsed=NEW.map(()=>false);
+    /* 1) точные дубли (полный ключ, включая время) — оставляем имеющуюся копию */
+    for(let j=0;j<NEW.length;j++){
+      const kj=entryKey(NEW[j]);
+      for(let i=0;i<OLD.length;i++)if(!oUsed[i]&&entryKey(OLD[i])===kj){oUsed[i]=true;nUsed[j]=true;keep(OLD[i]);break}
+    }
+    /* 2) остаток сопоставляем 1-к-1: ближайшая длительность (≤ допуск), затем
+       ближайшее время начала, затем стабильный порядок */
+    const cands=[];
+    for(let i=0;i<OLD.length;i++){if(oUsed[i])continue;
+      for(let j=0;j<NEW.length;j++){if(nUsed[j])continue;
+        const dh=Math.abs(OLD[i].hours-NEW[j].hours);
+        if(dh<=MERGE_HOURS_TOLERANCE+1e-9)cands.push({i,j,dh,dt:Math.abs(startSecs(OLD[i].start)-startSecs(NEW[j].start))});
+      }
+    }
+    cands.sort((a,b)=>a.dh-b.dh||a.dt-b.dt||a.i-b.i||a.j-b.j);
+    for(const c of cands){if(oUsed[c.i]||nUsed[c.j])continue;oUsed[c.i]=true;nUsed[c.j]=true;keep(NEW[c.j]);replaced++}
+    /* 3) несопоставленные новые — добавляем (без точного дубля) */
+    for(let j=0;j<NEW.length;j++)if(!nUsed[j]){if(seen.has(entryKey(NEW[j])))continue;keep(NEW[j]);added++}
+    /* 4) несопоставленные старые — оставляем; попавшие в диапазон экспорта считаем */
+    for(let i=0;i<OLD.length;i++)if(!oUsed[i]){keep(OLD[i]);if(OLD[i].date>=lo&&OLD[i].date<=hi)missing++}
+  }
+  result.sort(byStart);
+  return{entries:result,added,replaced,missing};
 }
 
 function detectRate(es){const nz=es.filter(e=>e.rate>0);return nz.length?nz[nz.length-1].rate:0}

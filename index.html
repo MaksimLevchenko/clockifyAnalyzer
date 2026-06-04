@@ -56,6 +56,14 @@
         <button class="btn ghost sm" id="pd-add">+ день выплаты</button>
         <small class="note">Максимум 4. Допустимые значения 1–28.</small>
       </div>
+      <div class="divider"></div>
+      <h3 class="subhead">Фактические даты выплат</h3>
+      <p class="hint">Если зарплата пришла на пару дней раньше или позже — отметь фактическую дату. Она заменит ближайший запланированный день в расчётах <b>прошлого</b> (реальный отток между чекпоинтами и стартовый «невыплаченный» пул прогноза). Часы, отработанные <b>после</b> фактической выплаты, относятся к новому периоду. На будущую часть прогноза не влияет.</p>
+      <div class="row">
+        <div class="field"><label>Дата прихода зп</label><input type="date" id="pda-date"></div>
+        <button class="btn green sm" id="pda-add">➕ Отметить</button>
+      </div>
+      <div id="pda-list" class="row" style="margin-top:10px"></div>
     </div>
 
     <div class="card">

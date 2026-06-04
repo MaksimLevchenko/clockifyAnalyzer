@@ -13,6 +13,7 @@ function migrate(s){
   s.expenses=s.expenses||[];
   s.incomes=s.incomes||[];
   s.payDays=Array.isArray(s.payDays)?s.payDays.filter(d=>Number.isFinite(+d)).map(d=>Math.min(28,Math.max(1,+d))):[];
+  s.payDayActuals=Array.isArray(s.payDayActuals)?[...new Set(s.payDayActuals.filter(d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)))].sort():[];
   if(!Array.isArray(s.checkpoints)){
     s.checkpoints=(s.balance!=null&&s.balanceDate)
       ?[{date:s.balanceDate,balance:Number(s.balance)||0}]

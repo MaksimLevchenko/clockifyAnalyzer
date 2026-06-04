@@ -313,7 +313,7 @@ function renderActualExpenses(){
   const card=document.getElementById('card-actual-expenses');
   if(!card)return;
   const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
-    excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,payDays:state.payDays
+    excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,payDays:state.payDays,payDayActuals:state.payDayActuals
   });
   if(!cf){card.style.display='none';return}
   card.style.display='';
@@ -341,7 +341,7 @@ function renderActualExpenses(){
     ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Слабый сигнал:</b> всего ${used} интервал(ов). Авто-оценка ненадёжна — добавь хотя бы 3 чекпоинта с разрывом в неделю-месяц, чтобы получить устойчивую статистику.</div>`
     :'';
   const hasEntries=state.entries.length>0;
-  const noPdWarn=hasEntries&&(!state.payDays||!state.payDays.length)
+  const noPdWarn=hasEntries&&(!state.payDays||!state.payDays.length)&&(!state.payDayActuals||!state.payDayActuals.length)
     ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Не настроены дни выплаты:</b> расчёт считает, что доход начисляется ежедневно. Если зарплата приходит раз в месяц/полмесяца, неоплаченная работа в Clockify ошибочно засчитывается как «потрачено» — авто-расход завышен. Настрой <b>Дни выплаты</b> выше, чтобы получить корректную оценку.</div>`
     :'';
   sm.innerHTML=`Реальный отток: <b>${fmt(cf.monthlyNetOut||0)} ${c}/мес</b> по ${used} интервалу(ам)`
@@ -431,6 +431,41 @@ function renderPayDays(){
     }));
   }
   document.getElementById('pd-add').disabled=pds.length>=4;
+}
+
+/* ----- actual pay dates (overrides for early/late salary) ----- */
+document.getElementById('pda-add').addEventListener('click',()=>{
+  const inp=document.getElementById('pda-date');
+  const d=inp.value;
+  if(!d){toast('Укажи дату');return}
+  if(d>today()){toast('Дата выплаты не может быть в будущем');return}
+  if(state.payDayActuals.includes(d)){toast('Эта дата уже отмечена');return}
+  state.payDayActuals.push(d);inp.value='';
+  saveState();renderPayDayActuals();renderActualExpenses();
+  if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+});
+
+function renderPayDayActuals(){
+  const list=document.getElementById('pda-list');
+  if(!list)return;
+  const acts=[...new Set(state.payDayActuals)].sort();
+  state.payDayActuals=acts;
+  if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням выплаты выше.</small>';return}
+  const max=esc(today());
+  list.innerHTML=acts.map((d,i)=>`<div class="field"><label>Выплата ${i+1}</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(d)}" max="${max}" data-pdai="${i}" style="width:150px"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
+  list.querySelectorAll('[data-pdai]').forEach(inp=>inp.addEventListener('change',()=>{
+    const i=+inp.dataset.pdai,v=inp.value;
+    if(!v||v>today()){toast('Дата выплаты не может быть в будущем');renderPayDayActuals();return}
+    if(state.payDayActuals.some((x,j)=>x===v&&j!==i)){toast('Эта дата уже отмечена');renderPayDayActuals();return}
+    state.payDayActuals[i]=v;
+    saveState();renderPayDayActuals();renderActualExpenses();
+    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+  }));
+  list.querySelectorAll('[data-pdadel]').forEach(b=>b.addEventListener('click',()=>{
+    state.payDayActuals.splice(+b.dataset.pdadel,1);
+    saveState();renderPayDayActuals();renderActualExpenses();
+    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+  }));
 }
 
 /* ========================= CHECKPOINTS ========================= */
@@ -574,6 +609,7 @@ function runForecast(auto){
       halfLife:state.halfLife,
       taxRate:state.taxRate,
       vacations:state.vacations,
+      payDayActuals:state.payDayActuals,
       anchorDate,
       autoMonthlyRates:ae?ae.sampleRates:null,
       autoMonthlyDurations:ae?ae.sampleDurations:null
@@ -957,11 +993,11 @@ document.addEventListener('click',e=>{
 function afterDataChange(opts){
   if(opts&&opts.silent)saveStateRaw();
   else saveState();
-  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
+  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderPayDayActuals();renderSync();
   if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 
-syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderSync();
+syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderPayDayActuals();renderSync();
 switchTab(location.hash.slice(1));
 maybeAutoPull();

@@ -312,20 +312,60 @@ function expandExpenses(exs,s,e,opts){
 /* ----- pay-day helpers ----- */
 function pad2(n){return String(n).padStart(2,'0')}
 
-function lastPayDayBefore(date,payDays){
-  if(!payDays||!payDays.length)return null;
-  const sorted=[...payDays].map(Number).sort((a,b)=>a-b);
-  const[y,m,d]=date.split('-').map(Number);
-  for(let i=sorted.length-1;i>=0;i--){
-    if(sorted[i]<=d)return`${y}-${pad2(m)}-${pad2(sorted[i])}`;
+const PAYDAY_MATCH_WINDOW=7;
+
+/* Effective payday dates (YYYY-MM-DD) within [start,end]. The monthly
+   schedule (payDays = month-days) is projected onto concrete dates; each
+   recorded actual date replaces the nearest scheduled occurrence within
+   PAYDAY_MATCH_WINDOW days, so a salary that arrived a couple days early/late
+   relocates that period's boundary instead of adding a second payday. Actuals
+   with no nearby scheduled occurrence — or when no schedule is set — act as
+   standalone paydays. */
+function effectivePayDays(start,end,payDays,actuals){
+  const days=[...new Set((payDays||[]).map(Number).filter(d=>Number.isFinite(d)))].sort((a,b)=>a-b);
+  const acts=[...new Set((actuals||[]).filter(Boolean))].sort();
+  const sched=[];
+  if(days.length){
+    /* project one extra month on each side so an actual near a window edge can
+       still claim its scheduled occurrence. */
+    const pStart=addDays(start,-40),pEnd=addDays(end,40);
+    let[y,m]=pStart.split('-').map(Number);
+    const[ey,em]=pEnd.split('-').map(Number);
+    while(y<ey||(y===ey&&m<=em)){
+      for(const d of days){
+        const ds=`${y}-${pad2(m)}-${pad2(d)}`;
+        if(ds>=pStart&&ds<=pEnd)sched.push({date:ds,eff:ds});
+      }
+      m++;if(m>12){m=1;y++;}
+    }
+    sched.sort((a,b)=>a.date<b.date?-1:1);
   }
-  const prevM=m===1?12:m-1, prevY=m===1?y-1:y;
-  return`${prevY}-${pad2(prevM)}-${pad2(sorted[sorted.length-1])}`;
+  const claimed=new Array(sched.length).fill(false);
+  const standalone=[];
+  for(const a of acts){
+    let best=-1,bestDist=Infinity;
+    for(let i=0;i<sched.length;i++){
+      if(claimed[i])continue;
+      const dist=Math.abs(daysBetween(sched[i].date,a));
+      if(dist<bestDist){bestDist=dist;best=i;}
+    }
+    if(best>=0&&bestDist<=PAYDAY_MATCH_WINDOW){claimed[best]=true;sched[best].eff=a;}
+    else standalone.push(a);
+  }
+  const eff=sched.map(s=>s.eff).concat(standalone).filter(ds=>ds>=start&&ds<=end);
+  return[...new Set(eff)].sort();
 }
 
-function initialUnpaidWork(es,anchorDate,payDays,fallbackRate){
-  if(!payDays||!payDays.length)return{money:0,hours:0};
-  const since=addDays(lastPayDayBefore(anchorDate,payDays),1);
+function lastPayDayBefore(date,payDays,actuals){
+  if((!payDays||!payDays.length)&&(!actuals||!actuals.length))return null;
+  const eff=effectivePayDays(addDays(date,-80),date,payDays,actuals);
+  return eff.length?eff[eff.length-1]:null;
+}
+
+function initialUnpaidWork(es,anchorDate,payDays,actuals,fallbackRate){
+  const boundary=lastPayDayBefore(anchorDate,payDays,actuals);
+  if(!boundary)return{money:0,hours:0};
+  const since=addDays(boundary,1);
   const fb=Number(fallbackRate)||0;
   let money=0,hours=0;
   for(const e of es){
@@ -379,7 +419,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const isPay=ds=>paySet.has(Number(ds.slice(8,10)));
   /* Initial unpaid pool is also net-of-tax — the user's checkpoint balance
      is post-tax, and pending salary will also arrive post-tax. */
-  const initPool=useDelayed?initialUnpaidWork(es,balanceDate,payDays,rate):{money:0,hours:0};
+  const initPool=useDelayed?initialUnpaidWork(es,balanceDate,payDays,opts.payDayActuals,rate):{money:0,hours:0};
   const init=initPool.money*(1-taxRate);
   const initHours=initPool.hours;
   const rand=mulberry32(seed);
@@ -664,6 +704,8 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   const fallbackRate=Number(opts.fallbackRate)||0;
   const refDate=opts.referenceDate||today();
   const payDays=opts.payDays&&opts.payDays.length?opts.payDays:null;
+  const payActuals=opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
+  const useDelayed=!!(payDays||payActuals);
   const excluded=new Set((opts.excluded||[]).map(x=>x.from+'|'+x.to));
   const sorted=[...cps].filter(c=>(c.kind||'actual')==='actual')
     .sort((a,b)=>a.date<b.date?-1:1);
@@ -674,8 +716,8 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
     const A=sorted[i-1],B=sorted[i];
     const dur=daysBetween(A.date,B.date);
     if(dur<=0)continue;
-    const earnFrom=payDays?lastPayDayBefore(A.date,payDays):A.date;
-    const earnTo=payDays?lastPayDayBefore(B.date,payDays):B.date;
+    const earnFrom=useDelayed?(lastPayDayBefore(A.date,payDays,payActuals)||A.date):A.date;
+    const earnTo=useDelayed?(lastPayDayBefore(B.date,payDays,payActuals)||B.date):B.date;
     let earnedGross=0;
     if(earnTo>earnFrom)for(const e of es||[])if(e.date>earnFrom&&e.date<=earnTo){
       const r=e.rate>0?e.rate:fallbackRate;

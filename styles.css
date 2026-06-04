@@ -157,6 +157,7 @@ canvas{display:block; cursor:crosshair}
 .chart-legend .lg-gold{background:var(--gold); border:1px solid var(--ink); width:10px; height:10px}
 .chart-legend .lg-tick{width:2px; height:11px; background:var(--muted)}
 .divider{height:1px; background:var(--line); margin:18px 0}
+.card h3.subhead{font-family:var(--serif); font-weight:600; font-size:15px; margin:0 0 4px; color:var(--ink)}
 small.note{color:var(--faint); font-size:12px}
 
 dialog.app-dialog{

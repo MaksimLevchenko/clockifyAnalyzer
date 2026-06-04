@@ -695,18 +695,23 @@ function renderForecastSummary(r,end){
   }
 
   let payout='';
-  if(r.nextSalary){
-    const ns=r.nextSalary;
-    const unpaidH=r.initialUnpaidHours||0;
-    const expH=ns.expHours||0;
+  if(r.nextSalary||r.prevSalary){
+    const po=[];
+    if(r.prevSalary){
+      const ps=r.prevSalary;
+      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmt(ps.money)} ${c}</div><div class="sub">${esc(dateRu(ps.date,true))} · после налога</div></div>`);
+      po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${(ps.hours||0).toFixed(1)} ч</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.date))}</div></div>`);
+    }
+    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.unpaidNow||0)} ${c}</div><div class="sub">после налога · накоплено с прошлой выплаты</div></div>`);
+    po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${(r.unpaidNowHours||0).toFixed(1)} ч</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
+    if(r.nextSalary){
+      const ns=r.nextSalary;
+      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>`);
+      po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${(ns.expHours||0).toFixed(1)} ч</div><div class="sub">войдут в ближайшую выплату</div></div>`);
+    }
     payout=`<div class="fc-payout">
       <div class="fc-payout-head">💵 Зарплата и невыплаченное</div>
-      <div class="fc-payout-grid">
-        <div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.initialUnpaid)} ${c}</div><div class="sub">после налога · накоплено с прошлой выплаты</div></div>
-        <div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${unpaidH.toFixed(1)} ч</div><div class="sub">отработано, но ещё не оплачено</div></div>
-        <div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>
-        <div class="po"><div class="k">Ожидаемые часы</div><div class="v">${expH.toFixed(1)} ч</div><div class="sub">войдут в ближайшую выплату</div></div>
-      </div>
+      <div class="fc-payout-grid">${po.join('')}</div>
     </div>`;
   }
 

@@ -426,6 +426,27 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const initPool=useDelayed?initialUnpaidWork(es,balanceDate,payDays,opts.payDayActuals,rate):{money:0,hours:0};
   const init=initPool.money*(1-taxRate);
   const initHours=initPool.hours;
+  /* Unpaid pool as of TODAY (not the anchor) — what's accrued since the last
+     payday on/before now. Drives the "Зарплата и невыплаченное" cards so they
+     describe the present moment even when the anchor checkpoint is in the past. */
+  const nowPool=useDelayed?initialUnpaidWork(es,ref,payDays,opts.payDayActuals,rate):{money:0,hours:0};
+  const unpaidNow=nowPool.money*(1-taxRate);
+  const unpaidNowHours=nowPool.hours;
+  /* Previous (already-paid) salary — from REAL entries, not the simulation: the
+     pay period ending at the most recent payday on/before today. */
+  let prevSalary=null;
+  if(useDelayed){
+    const lastPay=lastPayDayBefore(ref,payDays,opts.payDayActuals);
+    if(lastPay){
+      const prevPay=lastPayDayBefore(addDays(lastPay,-1),payDays,opts.payDayActuals);
+      let pm=0,ph=0;
+      for(const e of es)if(e.date<=lastPay&&(!prevPay||e.date>prevPay)){
+        pm+=e.hours*(e.rate>0?e.rate:rate);ph+=e.hours;
+      }
+      prevSalary={date:lastPay,money:pm*(1-taxRate),hours:ph,
+        periodFrom:prevPay?addDays(prevPay,1):(es.length?es[0].date:lastPay)};
+    }
+  }
   const rand=mulberry32(seed);
 
   /* ----- week-block bootstrap setup -----
@@ -503,7 +524,10 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const expectedWork=[],expectedExp=[],expectedInc=[];
   const vacationDays=[];
   let nextSalary=null;
-  let cumGrossExpH=0;
+  /* Expected gross hours accrued since the last payday — reset on every payday,
+     so the captured next-salary reflects only its own pay period (not everything
+     since the anchor). Seeded with the anchor's unpaid hours for the first period. */
+  let unpaidExpH=initHours;
   /* Snapshots of per-sim run[] at each TARGET checkpoint date — used
      to compute P(reaching) for that target after calibration. */
   const targetDateSet=new Set(targetCps.filter(c=>c.date>balanceDate&&c.date<=end).map(c=>c.date));
@@ -516,7 +540,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     const payToday=useDelayed&&isPay(ds);
     if(payToday)payDayDates.push(ds);
     const grossExpH=isVac?0:wm.expH[w];
-    cumGrossExpH+=grossExpH;
+    unpaidExpH+=grossExpH;
     expectedWork.push(grossExpH*rate*(1-taxRate));
     /* Auto-expense is normalized per CALENDAR month, matching the
        `daily` expense kind: amount/daysInMonth(ds) so monthly total
@@ -525,7 +549,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     const expectedAutoOut=autoMeanRate/dim;
     expectedExp.push(out+expectedAutoOut);
     expectedInc.push(inEv);
-    const captureNext=payToday&&!nextSalary;
+    const captureNext=payToday&&!nextSalary&&ds>=ref;
     const todayBonuses=captureNext?new Float64Array(nSims):null;
     const fcWi=dayToFcWeek[di];
     let runSum=0;
@@ -560,9 +584,10 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
         p10:sb[Math.floor(.1*nSims)],
         p90:sb[Math.floor(.9*nSims)],
         min:sb[0],max:sb[nSims-1],
-        expHours:initHours+cumGrossExpH
+        expHours:unpaidExpH
       };
     }
+    if(payToday)unpaidExpH=0;
     /* Mean track is the EMPIRICAL mean of the simulation runs (was
        previously an analytical track that drifted from sim mean due to
        per-day vs per-week weighting in the bootstrap). */
@@ -669,7 +694,8 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     totalExpenses:te,totalAutoExpense:autoTotal,totalIncomes:ti,
     totalExpectedWork,calibrationShift:finalShift,taxRate,
     unpaidAtEnd:unpaidMean,initialUnpaid:init,initialUnpaidHours:initHours,
-    nextSalary,
+    unpaidNow,unpaidNowHours,
+    prevSalary,nextSalary,
     targetReachProb,
     model:{pWork:[...wm.pWork],avgH:[...wm.avgH],expH:[...wm.expH],
       sampleSizes:wm.sampleSizes,halfLife,weekBootstrap:useWeekBoot,

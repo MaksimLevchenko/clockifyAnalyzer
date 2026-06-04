@@ -621,6 +621,9 @@ function runForecast(auto){
       autoMonthlyDurations:ae?ae.sampleDurations:null
     });
     r.cashFlow=cf;r.autoEstimate=ae;
+    r.past=reconstructPastBalance(state.entries,state.expenses,state.incomes,state.checkpoints,{
+      taxRate:state.taxRate,fallbackRate:state.rate,anchorDate:r.startDate
+    });
     lastFc=r;
     document.getElementById('card-fc-extras').style.display='';
     document.getElementById('card-fc-model').style.display='';

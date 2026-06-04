@@ -48,6 +48,7 @@ function bindTip(canvas,items,kind){
   if(canvas._tipBound)return;
   canvas._tipBound=true;
   function handle(clientX,clientY){
+    if(canvas._panning)return hideTip();
     const rect=canvas.getBoundingClientRect();
     const mx=clientX-rect.left, my=clientY-rect.top;
     const its=canvas._items;

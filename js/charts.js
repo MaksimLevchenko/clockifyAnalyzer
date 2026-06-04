@@ -4,6 +4,7 @@
 const COL = {
   ink:'#23201a', muted:'#736a58', line:'#ddd0b8',
   green:'#2f6b4f', terra:'#b1462c', gold:'#a9792a',
+  past:'#3d6e8e',
   band:'rgba(47,107,79,.16)'
 };
 const CHART_HEIGHTS = {
@@ -112,51 +113,89 @@ function drawArea(id,labels,vals,tips){
   bindTip(c,items,'point');
 }
 
-function drawForecast(id,r,startBal){
+/* Forecast viewport state. Pinned by left-edge day-offset (in days from the
+   timeline's leftmost date) so it survives resizes — px-per-day is recomputed
+   from width each draw, but the day-offset is width-independent. Reset to the
+   default ([today..end]) on every fresh forecast (keepView falsy). */
+let fcView=null;
+
+function drawForecast(id,r,startBal,keepView){
   const c=document.getElementById(id);if(!c)return;
   const{x,w,h}=dpr(c,c.getAttribute('height')*1);
   const pad=chartPad(w,true);
-  const allV=r.p90.concat(r.p10,[startBal]);
-  const mx=niceMax(Math.max(...allV));
-  const mn=Math.min(...r.p10,startBal,0);
-  const span=mx-mn||1;const n=r.days.length;
-  const px=i=>pad.l+(w-pad.l-pad.r)*(n<2?0:i/(n-1));
-  const py=v=>h-pad.b-(h-pad.t-pad.b)*((v-mn)/span);
+  const plotW=w-pad.l-pad.r, plotH=h-pad.t-pad.b;
   const small=w<420;
+  const past=(r.past&&r.past.dates.length)?r.past:null;
+  const n=r.days.length;
+  const leftLimit=past?past.dates[0]:r.startDate;
+  const endDate=r.days[n-1];
+  const endDn=Math.max(0,daysBetween(leftLimit,endDate));
+  const todayDn=daysBetween(leftLimit,today());
+  /* default window = [today..end]; if the whole horizon is in the past
+     (today>end) fall back to the last ~30 days so the view is never empty. */
+  let windowDays=endDn-todayDn;
+  if(windowDays<1)windowDays=Math.min(endDn||1,30);
+  const defaultLeftDn=Math.max(0,endDn-windowDays);
+  const pxPerDay=plotW/Math.max(1,windowDays);
+  let leftDn=(keepView&&fcView)?fcView.leftDn:defaultLeftDn;
+  leftDn=Math.max(0,Math.min(leftDn,defaultLeftDn));
+  fcView={leftDn,pxPerDay,leftLimit,defaultLeftDn,windowDays};
+  const dnOf=d=>daysBetween(leftLimit,d);
+  const X=d=>pad.l+(dnOf(d)-leftDn)*pxPerDay;
+
+  /* Y range over the VISIBLE window (so the default today→end view frames the
+     forecast even when a far-past balance is very different) — with 0 and the
+     start balance always kept as floors/references. */
+  const inWin=dn=>dn>=leftDn-1e-6&&dn<=leftDn+windowDays+1e-6;
+  let mn=Math.min(startBal,0),mx=startBal;
+  for(let i=0;i<n;i++){if(!inWin(dnOf(r.days[i])))continue;if(r.p90[i]>mx)mx=r.p90[i];if(r.p10[i]<mn)mn=r.p10[i]}
+  if(past)for(let i=0;i<past.dates.length;i++){if(!inWin(dnOf(past.dates[i])))continue;const v=past.balance[i];if(v>mx)mx=v;if(v<mn)mn=v}
+  mx=niceMax(mx);const span=(mx-mn)||1;
+  const Y=v=>h-pad.b-plotH*((v-mn)/span);
+
+  // Y axis grid + labels
   x.strokeStyle=COL.line;x.fillStyle=COL.muted;x.font=(small?'10px':'11px')+' Spline Sans Mono, monospace';x.lineWidth=1;
   for(let i=0;i<=4;i++){
-    const yy=pad.t+(h-pad.t-pad.b)*i/4;
-    const val=mn+span*(1-i/4);
+    const yy=pad.t+plotH*i/4;const val=mn+span*(1-i/4);
     x.beginPath();x.moveTo(pad.l,yy);x.lineTo(w-pad.r,yy);x.stroke();
     x.textAlign='right';x.fillText(small?fmtCompact(val):fmt(val),pad.l-4,yy+3);
   }
+
+  x.save();x.beginPath();x.rect(pad.l,pad.t,plotW,plotH);x.clip();
   // band
-  x.beginPath();r.p90.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
-  for(let i=n-1;i>=0;i--)x.lineTo(px(i),py(r.p10[i]));
+  x.beginPath();for(let i=0;i<n;i++){const cx=X(r.days[i]);i?x.lineTo(cx,Y(r.p90[i])):x.moveTo(cx,Y(r.p90[i]))}
+  for(let i=n-1;i>=0;i--)x.lineTo(X(r.days[i]),Y(r.p10[i]));
   x.closePath();x.fillStyle=COL.band;x.fill();
   // start balance line
   x.setLineDash([4,4]);x.strokeStyle=COL.muted;
-  x.beginPath();x.moveTo(pad.l,py(startBal));x.lineTo(w-pad.r,py(startBal));x.stroke();
+  x.beginPath();x.moveTo(pad.l,Y(startBal));x.lineTo(w-pad.r,Y(startBal));x.stroke();
   x.setLineDash([]);
   // zero line — visible only when the chart's Y range crosses 0
   if(mn<=0&&mx>=0){
-    const zy=py(0);
+    const zy=Y(0);
     x.setLineDash([2,3]);x.strokeStyle=COL.terra;x.lineWidth=1.5;
     x.beginPath();x.moveTo(pad.l,zy);x.lineTo(w-pad.r,zy);x.stroke();
     x.setLineDash([]);x.lineWidth=1;
-    x.fillStyle=COL.terra;x.textAlign='right';
-    x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
-    x.fillText('0',pad.l-4,zy+3);
+  }
+  // past reconstruction (real balance, no band)
+  if(past){
+    x.beginPath();for(let i=0;i<past.dates.length;i++){const cx=X(past.dates[i]);i?x.lineTo(cx,Y(past.balance[i])):x.moveTo(cx,Y(past.balance[i]))}
+    x.strokeStyle=COL.past;x.lineWidth=2;x.stroke();
   }
   // mean
-  x.beginPath();r.mean.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
+  x.beginPath();for(let i=0;i<n;i++){const cx=X(r.days[i]);i?x.lineTo(cx,Y(r.mean[i])):x.moveTo(cx,Y(r.mean[i]))}
   x.strokeStyle=COL.green;x.lineWidth=2.5;x.stroke();
-  // event markers
+  // event markers (forecast side)
   const dmap=new Map(r.days.map((d,i)=>[d,i]));
-  x.fillStyle=COL.terra;(r.expDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(px(i),py(r.mean[i]),3,0,7);x.fill()}});
-  x.fillStyle=COL.green;(r.incomeDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(px(i),py(r.mean[i]),3,0,7);x.fill()}});
+  x.fillStyle=COL.terra;(r.expDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(X(d),Y(r.mean[i]),3,0,7);x.fill()}});
+  x.fillStyle=COL.green;(r.incomeDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(X(d),Y(r.mean[i]),3,0,7);x.fill()}});
   x.fillStyle=COL.gold;x.strokeStyle=COL.ink;x.lineWidth=1;
-  (r.checkpointDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(px(i),py(r.mean[i]),5,0,7);x.fill();x.stroke()}});
+  (r.checkpointDays||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.arc(X(d),Y(r.mean[i]),5,0,7);x.fill();x.stroke()}});
+  // past checkpoints — gold dots pinned to the reconstruction line
+  if(past){
+    x.fillStyle=COL.gold;x.strokeStyle=COL.ink;x.lineWidth=1;
+    past.checkpoints.forEach(cp=>{x.beginPath();x.arc(X(cp.date),Y(cp.balance),5,0,7);x.fill();x.stroke()});
+  }
   /* Target checkpoints — solid terra-coloured dot drawn at the user's
      TARGET balance (not the modeled mean), so the user can see "where I
      want to be" vs "where the model predicts". A small vertical guide
@@ -164,7 +203,7 @@ function drawForecast(id,r,startBal){
   const tcps=(r.targetReachProb||[]).filter(t=>dmap.has(t.date));
   tcps.forEach(t=>{
     const i=dmap.get(t.date);if(i==null)return;
-    const tx=px(i),ty=py(t.balance),my=py(r.mean[i]);
+    const tx=X(t.date),ty=Y(t.balance),my=Y(r.mean[i]);
     x.strokeStyle=COL.terra;x.lineWidth=1;x.setLineDash([2,3]);
     x.beginPath();x.moveTo(tx,Math.min(ty,my));x.lineTo(tx,Math.max(ty,my));x.stroke();
     x.setLineDash([]);
@@ -173,19 +212,47 @@ function drawForecast(id,r,startBal){
   });
   // pay-day ticks at top of chart
   x.strokeStyle=COL.muted;x.lineWidth=1.5;
-  (r.payDayDates||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){x.beginPath();x.moveTo(px(i),pad.t);x.lineTo(px(i),pad.t+8);x.stroke()}});
-  // x labels
+  (r.payDayDates||[]).forEach(d=>{const i=dmap.get(d);if(i!=null){const cx=X(d);x.beginPath();x.moveTo(cx,pad.t);x.lineTo(cx,pad.t+8);x.stroke()}});
+  // today marker
+  const todayVisible=todayDn>=leftDn-1e-6&&todayDn<=leftDn+windowDays+1e-6;
+  if(todayVisible){
+    const tx=pad.l+(todayDn-leftDn)*pxPerDay;
+    x.setLineDash([3,3]);x.strokeStyle=COL.ink;x.lineWidth=1;
+    x.beginPath();x.moveTo(tx,pad.t);x.lineTo(tx,h-pad.b);x.stroke();x.setLineDash([]);
+  }
+  x.restore(); // end clip
+
+  if(todayVisible){
+    const tx=pad.l+(todayDn-leftDn)*pxPerDay;
+    x.fillStyle=COL.ink;x.textAlign='center';x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
+    x.fillText('сегодня',Math.max(pad.l+22,Math.min(w-pad.r-22,tx)),pad.t-1);
+  }
+  if(mn<=0&&mx>=0){
+    x.fillStyle=COL.terra;x.textAlign='right';x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
+    x.fillText('0',pad.l-4,Y(0)+3);
+  }
+  // x labels (only within the visible window)
   x.fillStyle=COL.muted;x.textAlign='center';x.font=(small?'9px':'10px')+' Spline Sans Mono, monospace';
-  const step=chartLabelStep(w,n);
-  r.days.forEach((d,i)=>{if(i%step===0)x.fillText(dateRu(d),px(i),h-pad.b+13)});
-  // hover tooltips
+  const stepDays=chartLabelStep(w,Math.round(windowDays)+1);
+  const startK=Math.ceil(leftDn);
+  for(let dn=startK;dn<=leftDn+windowDays+1e-6;dn++){
+    if((dn-startK)%stepDays!==0)continue;
+    const cx=pad.l+(dn-leftDn)*pxPerDay;
+    if(cx>=pad.l-1&&cx<=w-pad.r+1)x.fillText(dateRu(addDays(leftLimit,dn)),cx,h-pad.b+13);
+  }
+
+  // hover tooltips — only points currently within the viewport
   const ccy=esc(cur());
   const expSet=new Set(r.expDays||[]);
   const incSet=new Set(r.incomeDays||[]);
   const cpSet=new Set(r.checkpointDays||[]);
   const paySet=new Set(r.payDayDates||[]);
   const tgtByDate=new Map((r.targetReachProb||[]).map(t=>[t.date,t]));
-  const items=r.days.map((d,i)=>{
+  const pastCpSet=new Set(past?past.checkpoints.map(cp=>cp.date):[]);
+  const visible=cx=>cx>=pad.l-pxPerDay&&cx<=w-pad.r+pxPerDay;
+  const items=[];
+  for(let i=0;i<n;i++){
+    const d=r.days[i],cx=X(d);if(!visible(cx))continue;
     const dt=dateRu(d,true);const wn=WD[wd(d)];
     let html=`<b>${esc(dt)} (${wn})</b><br>Среднее: <b>${fmt(r.mean[i])} ${ccy}</b><br>Интервал 80%: ${fmt(r.p10[i])} — ${fmt(r.p90[i])} ${ccy}`;
     if(paySet.has(d))html+=`<br><span class="sub">💵 день выплаты</span>`;
@@ -196,9 +263,68 @@ function drawForecast(id,r,startBal){
     }
     if(expSet.has(d))html+=`<br><span style="color:#e89a85">● расход</span>`;
     if(incSet.has(d))html+=`<br><span style="color:#88c5a8">● поступление</span>`;
-    return{cx:px(i),cy:py(r.mean[i]),html};
-  });
+    items.push({cx,cy:Y(r.mean[i]),html});
+  }
+  if(past)for(let i=0;i<past.dates.length;i++){
+    const d=past.dates[i],cx=X(d);if(!visible(cx))continue;
+    const dt=dateRu(d,true);const wn=WD[wd(d)];
+    let html=`<b>${esc(dt)} (${wn})</b><br>Факт (реконструкция): <b>${fmt(past.balance[i])} ${ccy}</b>`;
+    if(pastCpSet.has(d))html+=`<br><span style="color:#e6c982">★ чекпоинт</span>`;
+    items.push({cx,cy:Y(past.balance[i]),html});
+  }
   bindTip(c,items,'point');
+  bindForecastPan(c);
+}
+
+/* Drag-to-pan for the forecast chart. Pins the viewport by day-offset and
+   redraws on rAF. Sets canvas._panning during an active drag so bindTip
+   (ui.js) suppresses the hover tooltip. Bound once per canvas. */
+function bindForecastPan(c){
+  if(c._panBound)return;c._panBound=true;
+  c.style.cursor='grab';
+  let dragging=false,startX=0,startLeftDn=0,raf=0,startY=0,decided=false;
+  const redraw=()=>{raf=0;if(lastFc)drawForecast('ch-fc',lastFc,lastFc.startBalance,true)};
+  const schedule=()=>{if(!raf)raf=requestAnimationFrame(redraw)};
+  const apply=dx=>{
+    if(!fcView)return;
+    let nd=startLeftDn-dx/fcView.pxPerDay;
+    fcView.leftDn=Math.max(0,Math.min(nd,fcView.defaultLeftDn));
+    schedule();
+  };
+  const canPan=()=>fcView&&fcView.defaultLeftDn>0;
+  c.addEventListener('mousedown',e=>{
+    if(!canPan())return;
+    dragging=true;startX=e.clientX;startLeftDn=fcView.leftDn;c.style.cursor='grabbing';
+  });
+  window.addEventListener('mousemove',e=>{
+    if(!dragging)return;
+    const dx=e.clientX-startX;
+    if(Math.abs(dx)>2){c._panning=true;hideTip()}
+    apply(dx);
+  });
+  window.addEventListener('mouseup',()=>{
+    if(!dragging)return;dragging=false;c.style.cursor='grab';
+    setTimeout(()=>{c._panning=false},0);
+  });
+  c.addEventListener('touchstart',e=>{
+    if(!canPan())return;const t=e.touches[0];if(!t)return;
+    dragging=true;decided=false;startX=t.clientX;startY=t.clientY;startLeftDn=fcView.leftDn;
+  },{passive:true});
+  c.addEventListener('touchmove',e=>{
+    if(!dragging)return;const t=e.touches[0];if(!t)return;
+    const dx=t.clientX-startX,dy=t.clientY-startY;
+    if(!decided){
+      if(Math.abs(dx)<6&&Math.abs(dy)<6)return;
+      decided=true;
+      if(Math.abs(dx)<=Math.abs(dy)){dragging=false;return}
+      c._panning=true;hideTip();
+    }
+    e.preventDefault();
+    apply(dx);
+  },{passive:false});
+  const end=()=>{dragging=false;setTimeout(()=>{c._panning=false},50)};
+  c.addEventListener('touchend',end);
+  c.addEventListener('touchcancel',end);
 }
 
 function drawLine(id,labels,vals,tips){
@@ -264,8 +390,24 @@ function setCardEmpty(cardId,msg){
   }else if(e){e.style.display='none'}
 }
 
+function renderMonthlyStats(){
+  const card=document.getElementById('card-monthly-stats');if(!card)return;
+  const monthly=state.entries.length?monthlyAgg(state.entries):[];
+  if(!monthly.length){card.style.display='none';return}
+  card.style.display='';
+  const c=esc(cur());
+  const rows=[...monthly].sort((a,b)=>a.month<b.month?1:-1);
+  document.querySelector('#monthly-stats-table tbody').innerHTML=rows.map(m=>`<tr>
+    <td>${esc(monthRu(m.month))}</td>
+    <td class="num">${m.hours.toFixed(1)}</td>
+    <td class="num">${fmt(m.amount)} ${c}</td>
+    <td class="num">${m.days}</td>
+  </tr>`).join('');
+}
+
 function drawAllCharts(){
   drawBalanceChart();
+  renderMonthlyStats();
   const es=state.entries;
   const daily=es.length?dailyAgg(es):[];
   const monthly=es.length?monthlyAgg(es):[];
@@ -445,7 +587,7 @@ window.addEventListener('resize',()=>{
   _resizeT=setTimeout(()=>{
     if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
     if(document.getElementById('panel-forecast').classList.contains('active')&&lastFc){
-      drawForecast('ch-fc',lastFc,lastFc.startBalance);
+      drawForecast('ch-fc',lastFc,lastFc.startBalance,true);
       drawMonthlyForecast(lastFc);
       drawFinalDist(lastFc);
     }

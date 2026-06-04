@@ -146,6 +146,8 @@ canvas{display:block; cursor:crosshair}
 .chart-legend .lg{display:inline-block; flex-shrink:0}
 .chart-legend .lg-line{width:16px; height:2px; background:var(--green); border-radius:1px}
 .chart-legend .lg-line.lg-dash{background:repeating-linear-gradient(to right, var(--muted) 0 4px, transparent 4px 8px); height:1px}
+.chart-legend .lg-line.lg-past{background:#3d6e8e}
+.chart-legend .lg-now{width:2px; height:11px; background:repeating-linear-gradient(to bottom, var(--ink) 0 3px, transparent 3px 6px)}
 .chart-legend .lg-band{width:16px; height:9px; background:rgba(47,107,79,.16); border-radius:2px}
 .chart-legend .lg-bar{width:10px; height:10px; border-radius:2px}
 .chart-legend .lg-bar.lg-green{background:var(--green)}

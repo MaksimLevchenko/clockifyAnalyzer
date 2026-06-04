@@ -682,6 +682,52 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   };
 }
 
+/* ----- past balance reconstruction (pre-anchor part of the forecast chart) -----
+   Rebuilds a DAILY balance series over [firstActualCheckpoint .. anchorDate] from
+   actual data, pinned to every actual checkpoint. Between two consecutive actual
+   checkpoints the known daily flow (net earned + one-time incomes − explicit
+   expenses) shapes the curve; the unexplained residual is spread evenly so the
+   line lands exactly on each recorded balance. Returns null when there is nothing
+   before the anchor to reconstruct. */
+function reconstructPastBalance(es,exs,incs,cps,opts){
+  opts=opts||{};
+  if(!opts.anchorDate)throw new Error('reconstructPastBalance: anchorDate is required');
+  const anchorDate=opts.anchorDate;
+  const taxFactor=1-Math.max(0,Math.min(1,(opts.taxRate||0)/100));
+  const fallbackRate=Number(opts.fallbackRate)||0;
+  const refDate=opts.referenceDate||today();
+  const used=[...(cps||[])].filter(c=>(c.kind||'actual')==='actual'&&c.date<=anchorDate)
+    .sort((a,b)=>a.date<b.date?-1:1);
+  if(used.length<2)return null;
+  const firstDate=used[0].date;
+  if(firstDate>=anchorDate)return null;
+  const dates=dateRange(firstDate,anchorDate);
+  const idx=new Map(dates.map((d,i)=>[d,i]));
+  const earned=new Map();
+  for(const e of es||[])if(e.date>=firstDate&&e.date<=anchorDate){
+    const r=e.rate>0?e.rate:fallbackRate;
+    earned.set(e.date,(earned.get(e.date)||0)+e.hours*r*taxFactor);
+  }
+  const incByDay=new Map();
+  for(const inc of incs||[])if(inc.date>=firstDate&&inc.date<=anchorDate)
+    incByDay.set(inc.date,(incByDay.get(inc.date)||0)+Number(inc.amount));
+  const expMap=expandExpenses(exs||[],firstDate,anchorDate,{baseDate:refDate});
+  const known=d=>(earned.get(d)||0)+(incByDay.get(d)||0)-(expMap.get(d)||0);
+  const balance=new Array(dates.length);
+  balance[0]=used[0].balance;
+  for(let k=0;k<used.length-1;k++){
+    const A=used[k],B=used[k+1];
+    const iA=idx.get(A.date),iB=idx.get(B.date);
+    if(iA==null||iB==null||iB<=iA)continue;
+    let sumKnown=0;
+    for(let i=iA+1;i<=iB;i++)sumKnown+=known(dates[i]);
+    const resPerDay=((B.balance-A.balance)-sumKnown)/(iB-iA);
+    for(let i=iA+1;i<=iB;i++)balance[i]=balance[i-1]+known(dates[i])+resPerDay;
+    balance[iB]=B.balance;
+  }
+  return{dates,balance,checkpoints:used.map(c=>({date:c.date,balance:c.balance}))};
+}
+
 /* ----- cash flow from checkpoints -----
    Между двумя соседними фактическими чекпоинтами A→B наблюдаемый cash-out =
    заработано(A,B] + поступления(A,B] − Δбаланса. Из него вычитаем введённые

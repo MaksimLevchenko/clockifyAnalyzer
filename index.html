@@ -310,6 +310,13 @@
         <canvas id="ch-hist" height="200"></canvas>
       </div>
     </div>
+    <div class="card" id="card-monthly-stats" style="display:none">
+      <h2>Статистика по месяцам</h2>
+      <p class="hint">Часы и заработок (часы × ставка) по календарным месяцам. Свежие месяцы — сверху.</p>
+      <div class="scroll"><table id="monthly-stats-table"><thead><tr>
+        <th>Месяц</th><th class="num">Часы</th><th class="num">Доход</th><th class="num">Рабочих дней</th>
+      </tr></thead><tbody></tbody></table></div>
+    </div>
     <div class="card" id="card-balance" style="display:none">
       <h2>Баланс по чекпоинтам</h2>
       <p class="hint">Фактические балансы в хронологическом порядке. Полезно, когда чекпоинтов несколько — видно реальную динамику.</p>
@@ -333,6 +340,8 @@
       <div class="chart-legend" style="margin-top:18px">
         <span><i class="lg lg-line"></i>среднее</span>
         <span><i class="lg lg-band"></i>интервал 80%</span>
+        <span><i class="lg lg-line lg-past"></i>реальный баланс (факт)</span>
+        <span><i class="lg lg-now"></i>сегодня</span>
         <span><i class="lg lg-line lg-dash"></i>стартовый баланс</span>
         <span><i class="lg lg-line lg-dash" style="background:var(--terra)"></i>ноль (порог разрыва)</span>
         <span><i class="lg lg-dot lg-terra"></i>расход</span>
@@ -341,6 +350,7 @@
         <span><i class="lg lg-dot lg-terra"></i>цель (с пунктиром до прогноза)</span>
         <span><i class="lg lg-tick"></i>день выплаты</span>
       </div>
+      <p class="hint" style="margin:6px 0 0">↔ Перетаскивай график мышью или пальцем, чтобы листать прошлое: слева от «сегодня» — реальный баланс, справа — прогноз.</p>
       <div class="chartbox" style="margin-top:6px"><canvas id="ch-fc" height="280"></canvas></div>
       <div class="fc-summary" id="fc-summary"></div>
     </div>

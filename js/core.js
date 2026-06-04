@@ -415,8 +415,12 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const incMap=new Map();
   for(const inc of incs||[])if(inc.date>=start&&inc.date<=end)incMap.set(inc.date,(incMap.get(inc.date)||0)+Number(inc.amount));
   const useDelayed=!!(payDays&&payDays.length);
-  const paySet=new Set((payDays||[]).map(Number));
-  const isPay=ds=>paySet.has(Number(ds.slice(8,10)));
+  /* Effective payday DATES across the forecast range: scheduled occurrences in
+     the past portion (anchor→today) are relocated to recorded actual dates,
+     while future occurrences stay on schedule (no actuals exist there). Keeps
+     the simulated salary timing consistent with the initial unpaid pool. */
+  const paySet=new Set(useDelayed?effectivePayDays(start,end,payDays,opts.payDayActuals):[]);
+  const isPay=ds=>paySet.has(ds);
   /* Initial unpaid pool is also net-of-tax — the user's checkpoint balance
      is post-tax, and pending salary will also arrive post-tax. */
   const initPool=useDelayed?initialUnpaidWork(es,balanceDate,payDays,opts.payDayActuals,rate):{money:0,hours:0};

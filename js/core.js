@@ -708,8 +708,11 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   const fallbackRate=Number(opts.fallbackRate)||0;
   const refDate=opts.referenceDate||today();
   const payDays=opts.payDays&&opts.payDays.length?opts.payDays:null;
-  const payActuals=opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
-  const useDelayed=!!(payDays||payActuals);
+  /* Actual dates only refine boundaries when a schedule exists — without one
+     income is accrued daily and actuals are not used (matches the UI, which
+     blocks marking actual dates until pay-day numbers are set). */
+  const payActuals=payDays&&opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
+  const useDelayed=!!payDays;
   const excluded=new Set((opts.excluded||[]).map(x=>x.from+'|'+x.to));
   const sorted=[...cps].filter(c=>(c.kind||'actual')==='actual')
     .sort((a,b)=>a.date<b.date?-1:1);

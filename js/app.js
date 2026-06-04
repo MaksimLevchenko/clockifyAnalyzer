@@ -341,7 +341,7 @@ function renderActualExpenses(){
     ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Слабый сигнал:</b> всего ${used} интервал(ов). Авто-оценка ненадёжна — добавь хотя бы 3 чекпоинта с разрывом в неделю-месяц, чтобы получить устойчивую статистику.</div>`
     :'';
   const hasEntries=state.entries.length>0;
-  const noPdWarn=hasEntries&&(!state.payDays||!state.payDays.length)&&(!state.payDayActuals||!state.payDayActuals.length)
+  const noPdWarn=hasEntries&&(!state.payDays||!state.payDays.length)
     ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Не настроены дни выплаты:</b> расчёт считает, что доход начисляется ежедневно. Если зарплата приходит раз в месяц/полмесяца, неоплаченная работа в Clockify ошибочно засчитывается как «потрачено» — авто-расход завышен. Настрой <b>Дни выплаты</b> выше, чтобы получить корректную оценку.</div>`
     :'';
   sm.innerHTML=`Реальный отток: <b>${fmt(cf.monthlyNetOut||0)} ${c}/мес</b> по ${used} интервалу(ам)`
@@ -409,7 +409,7 @@ document.getElementById('pd-add').addEventListener('click',()=>{
   const last=state.payDays.length?state.payDays[state.payDays.length-1]:0;
   const next=state.payDays.length?Math.min(28,last+10):5;
   state.payDays.push(next);
-  saveState();renderPayDays();
+  saveState();renderPayDays();renderPayDayActuals();
 });
 
 function renderPayDays(){
@@ -427,7 +427,7 @@ function renderPayDays(){
     }));
     list.querySelectorAll('[data-pddel]').forEach(b=>b.addEventListener('click',()=>{
       state.payDays.splice(+b.dataset.pddel,1);
-      saveState();renderPayDays();
+      saveState();renderPayDays();renderPayDayActuals();
     }));
   }
   document.getElementById('pd-add').disabled=pds.length>=4;
@@ -435,6 +435,7 @@ function renderPayDays(){
 
 /* ----- actual pay dates (overrides for early/late salary) ----- */
 document.getElementById('pda-add').addEventListener('click',()=>{
+  if(!state.payDays.length){toast('Сначала задай дни выплаты');return}
   const inp=document.getElementById('pda-date');
   const d=inp.value;
   if(!d){toast('Укажи дату');return}
@@ -448,6 +449,11 @@ document.getElementById('pda-add').addEventListener('click',()=>{
 function renderPayDayActuals(){
   const list=document.getElementById('pda-list');
   if(!list)return;
+  const dateInp=document.getElementById('pda-date'),addBtn=document.getElementById('pda-add');
+  const hasSchedule=state.payDays.length>0;
+  if(dateInp)dateInp.disabled=!hasSchedule;
+  if(addBtn)addBtn.disabled=!hasSchedule;
+  if(!hasSchedule){list.innerHTML='<small class="note">Сначала задай <b>дни выплаты</b> выше — без расписания отметить фактическую дату нельзя.</small>';return}
   const acts=[...new Set(state.payDayActuals)].sort();
   state.payDayActuals=acts;
   if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням выплаты выше.</small>';return}

@@ -465,21 +465,20 @@ function renderPayDayActuals(){
   state.payDayActuals=acts;
   if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням зп выше.</small>';return}
   list.innerHTML=acts.map((a,i)=>`<div class="field"><label>Выплата ${i+1}: приход → учёт часов</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(a.payout)}" data-pdaip="${i}" style="width:150px" title="День прихода денег (может быть в будущем)"><span class="note">→</span><input type="date" value="${esc(a.accrual||'')}" data-pdaia="${i}" style="width:150px" title="День учёта часов (опц., пусто = по дню зп)"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
-  const commit=()=>{saveState();renderPayDayActuals();renderActualExpenses();if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true)};
+  /* deps() обновляет состояние и зависимые виды, но НЕ перерисовывает список —
+     иначе при посегментном вводе даты поле пересоздаётся и ввод сбрасывается. */
+  const deps=()=>{saveState();renderActualExpenses();if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true)};
   list.querySelectorAll('[data-pdaip]').forEach(inp=>inp.addEventListener('change',()=>{
     const i=+inp.dataset.pdaip,v=inp.value;
-    if(!v){toast('Укажи дату выплаты');renderPayDayActuals();return}
-    if(state.payDayActuals.some((x,j)=>x.payout===v&&j!==i)){toast('Эта дата выплаты уже отмечена');renderPayDayActuals();return}
-    if(state.payDayActuals[i].accrual&&state.payDayActuals[i].accrual>v){toast('День учёта часов не может быть позже дня выплаты');renderPayDayActuals();return}
-    state.payDayActuals[i].payout=v;commit();
+    if(!v)return; // дату ещё вводят
+    state.payDayActuals[i].payout=v;deps();
   }));
   list.querySelectorAll('[data-pdaia]').forEach(inp=>inp.addEventListener('change',()=>{
-    const i=+inp.dataset.pdaia,v=inp.value||null;
-    if(v&&v>state.payDayActuals[i].payout){toast('День учёта часов не может быть позже дня выплаты');renderPayDayActuals();return}
-    state.payDayActuals[i].accrual=v;commit();
+    const i=+inp.dataset.pdaia;
+    state.payDayActuals[i].accrual=inp.value||null;deps();
   }));
   list.querySelectorAll('[data-pdadel]').forEach(b=>b.addEventListener('click',()=>{
-    state.payDayActuals.splice(+b.dataset.pdadel,1);commit();
+    state.payDayActuals.splice(+b.dataset.pdadel,1);deps();renderPayDayActuals();
   }));
 }
 
@@ -546,15 +545,22 @@ function renderCheckpoints(){
   }));
   tb.querySelectorAll('[data-cpdate]').forEach(inp=>inp.addEventListener('change',()=>{
     const oldD=inp.dataset.cpdate, newD=inp.value;
-    if(!newD){inp.value=oldD;return}
-    if(newD===oldD)return;
+    if(!newD||newD===oldD)return; // дату ещё вводят
     if(state.checkpoints.some(c=>c.date===newD)){
       toast('Чекпоинт на эту дату уже есть');inp.value=oldD;return;
     }
     const cp=state.checkpoints.find(c=>c.date===oldD);if(!cp)return;
-    cp.date=newD;
+    cp.date=newD;inp.dataset.cpdate=newD;
+    /* НЕ перерисовываем таблицу здесь — иначе посегментный ввод даты сбрасывается.
+       Синхронизируем ключи соседних контролов строки (они ключуются по дате). */
+    const tr=inp.closest('tr');
+    if(tr){
+      tr.querySelectorAll('[data-cpbal]').forEach(x=>x.dataset.cpbal=newD);
+      tr.querySelectorAll('[data-cpdel]').forEach(x=>x.dataset.cpdel=newD);
+      tr.querySelectorAll('[data-cpkind]').forEach(x=>x.dataset.cpkind=newD);
+    }
     pruneStaleExclusions();
-    saveState();renderCheckpoints();renderActualExpenses();renderTicker();renderDataStats();
+    saveState();renderActualExpenses();renderTicker();renderDataStats();
     if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
   }));
   tb.querySelectorAll('[data-cpbal]').forEach(inp=>inp.addEventListener('change',()=>{

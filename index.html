@@ -60,8 +60,8 @@
       <h3 class="subhead">Фактические даты выплат</h3>
       <p class="hint">Каждый месяц день прихода денег может быть свой (то 5-е, то 10-е). Отметь две даты: <b>день выплаты</b> — когда деньги пришли (или придут) на карту; <b>день учёта часов</b> — до какого дня они посчитаны (необязательно, пусто = по дню зп). Пара заменяет запланированную выплату того месяца. Дату выплаты можно ставить и <b>в будущем</b> (если знаешь, что зп придёт позже). Не отмеченные месяцы — по дню зп.</p>
       <div class="row">
-        <div class="field"><label>День выплаты (приход денег)</label><input type="date" id="pda-payout"></div>
-        <div class="field"><label>День учёта часов (опц.)</label><input type="date" id="pda-accrual"></div>
+        <div class="field"><label>День выплаты (приход денег)</label><span class="date-wrap"><input type="date" id="pda-payout"><button type="button" class="btn ghost sm date-today" data-for="pda-payout" tabindex="-1">сегодня</button></span></div>
+        <div class="field"><label>День учёта часов (опц.)</label><span class="date-wrap"><input type="date" id="pda-accrual"><button type="button" class="btn ghost sm date-today" data-for="pda-accrual" tabindex="-1">сегодня</button></span></div>
         <button class="btn green sm" id="pda-add">➕ Отметить</button>
       </div>
       <div id="pda-list" class="row" style="margin-top:10px"></div>
@@ -71,7 +71,7 @@
       <h2>Чекпоинты баланса</h2>
       <p class="hint">Самый поздний <b>фактический</b> чекпоинт — стартовая точка прогноза. Будущие <b>фактические</b> чекпоинты калибруют прогноз. <b>Целевые</b> чекпоинты — это твои хотелки: они показываются маркером на графике, но не двигают траекторию.</p>
       <div class="row">
-        <div class="field"><label>Дата</label><input type="date" id="cp-date"></div>
+        <div class="field"><label>Дата</label><span class="date-wrap"><input type="date" id="cp-date"><button type="button" class="btn ghost sm date-today" data-for="cp-date" tabindex="-1">сегодня</button></span></div>
         <div class="field"><label>Баланс</label><input type="number" id="cp-amt" step="0.01" value="0"></div>
         <div class="field"><label>Тип</label>
           <select id="cp-kind">
@@ -189,7 +189,7 @@
     <div class="card">
       <h2>Добавить запись</h2>
       <div class="row">
-        <div class="field"><label>Дата</label><input type="date" id="ad-date"></div>
+        <div class="field"><label>Дата</label><span class="date-wrap"><input type="date" id="ad-date"><button type="button" class="btn ghost sm date-today" data-for="ad-date" tabindex="-1">сегодня</button></span></div>
         <div class="field"><label>Проект</label><input type="text" id="ad-proj"></div>
         <div class="field"><label>Часы</label><input type="number" id="ad-hours" step="0.01" value="0"></div>
         <div class="field"><label>Ставка</label><input type="number" id="ad-rate" step="0.01" value="0"></div>
@@ -214,7 +214,7 @@
         <div class="field"><label>Сумма</label><input type="number" id="ex-amt" step="0.01" value="0"></div>
         <div class="field" id="ex-grow-field"><label title="Годовая индексация: рента +5%, подписки +3% и т.д. 0 = без роста. К разовым не применяется.">Рост, %/год</label><input type="number" id="ex-grow" step="0.5" value="0" style="width:90px"></div>
         <div class="field" id="ex-day-field"><label>День месяца</label><input type="number" id="ex-day" min="1" max="28" value="1"></div>
-        <div class="field" id="ex-date-field" style="display:none"><label>Дата</label><input type="date" id="ex-date"></div>
+        <div class="field" id="ex-date-field" style="display:none"><label>Дата</label><span class="date-wrap"><input type="date" id="ex-date"><button type="button" class="btn ghost sm date-today" data-for="ex-date" tabindex="-1">сегодня</button></span></div>
         <button class="btn green" id="ex-add">➕ Добавить</button>
       </div>
     </div>
@@ -228,8 +228,8 @@
       <h2>Отпуска и нерабочие периоды</h2>
       <p class="hint">Дни/периоды, в которые ты <b>точно не работаешь</b> (отпуск, командировка-без-работы, болезнь, праздники). В прогнозе модель не начисляет за них доход, а в исторической статистике они не считаются «днями без работы» (чтобы не занижать твою обычную загрузку).</p>
       <div class="row">
-        <div class="field"><label>Начало</label><input type="date" id="vac-from"></div>
-        <div class="field"><label>Конец</label><input type="date" id="vac-to"></div>
+        <div class="field"><label>Начало</label><span class="date-wrap"><input type="date" id="vac-from"><button type="button" class="btn ghost sm date-today" data-for="vac-from" tabindex="-1">сегодня</button></span></div>
+        <div class="field"><label>Конец</label><span class="date-wrap"><input type="date" id="vac-to"><button type="button" class="btn ghost sm date-today" data-for="vac-to" tabindex="-1">сегодня</button></span></div>
         <div class="field"><label>Название (опц.)</label><input type="text" id="vac-name" placeholder="Отпуск в Грузии"></div>
         <button class="btn green" id="vac-add">➕ Добавить</button>
       </div>
@@ -258,7 +258,7 @@
       <h2>Разовые поступления</h2>
       <p class="hint">Добавляются к балансу в указанную дату (премия, возврат, бонус). Учитываются в прогнозе.</p>
       <div class="row">
-        <div class="field"><label>Дата</label><input type="date" id="inc-date"></div>
+        <div class="field"><label>Дата</label><span class="date-wrap"><input type="date" id="inc-date"><button type="button" class="btn ghost sm date-today" data-for="inc-date" tabindex="-1">сегодня</button></span></div>
         <div class="field"><label>Название</label><input type="text" id="inc-name" placeholder="Премия"></div>
         <div class="field"><label>Сумма</label><input type="number" id="inc-amt" step="0.01" value="0"></div>
         <button class="btn green" id="inc-add">➕ Добавить</button>

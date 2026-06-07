@@ -461,7 +461,6 @@ function renderPayDayActuals(){
   if(aInp)aInp.disabled=!hasSchedule;
   if(addBtn)addBtn.disabled=!hasSchedule;
   if(!hasSchedule){list.innerHTML='<small class="note">Сначала задай <b>дни зп</b> выше — без расписания отметить фактическую дату нельзя.</small>';return}
-  if(pInp&&!pInp.value)pInp.value=today();
   const acts=[...state.payDayActuals].sort((x,y)=>x.payout<y.payout?-1:1);
   state.payDayActuals=acts;
   if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням зп выше.</small>';return}
@@ -1033,30 +1032,12 @@ switchTab(location.hash.slice(1));
 maybeAutoPull();
 
 /* ========================= DATE INPUT UX ========================= */
-/* К каждому полю даты (кроме плотных табличных редакторов в ячейках) добавляем
-   кнопку «сегодня». dispatch('change') — чтобы сработали существующие обработчики. */
-function enhanceDateInput(inp){
-  if(inp.dataset.dx)return;inp.dataset.dx='1';
-  if(inp.closest('td'))return; // в ячейках таблиц — только клик-открытие, без кнопки
-  const wrap=document.createElement('span');wrap.className='date-wrap';
-  inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);
-  const b=document.createElement('button');
-  b.type='button';b.className='btn ghost sm date-today';b.textContent='сегодня';b.tabIndex=-1;
-  b.addEventListener('click',()=>{
-    if(inp.disabled)return;
-    inp.value=today();
-    inp.dispatchEvent(new Event('change',{bubbles:true}));
-  });
-  wrap.appendChild(b);
-}
-function enhanceAllDates(root){
-  (root||document).querySelectorAll('input[type=date]:not([data-dx])').forEach(enhanceDateInput);
-}
-new MutationObserver(muts=>{
-  for(const m of muts)for(const n of m.addedNodes){
-    if(n.nodeType!==1)continue;
-    if(n.matches&&n.matches('input[type=date]'))enhanceDateInput(n);
-    else if(n.querySelectorAll)enhanceAllDates(n);
-  }
-}).observe(document.body,{childList:true,subtree:true});
-enhanceAllDates();
+/* Кнопки «сегодня» статические (в разметке, data-for). Ничего не двигаем, не
+   перехватываем фокус и не открываем календарь программно — ручной ввод и
+   нативный календарь (по иконке) работают как обычно. */
+document.addEventListener('click',e=>{
+  const b=e.target.closest&&e.target.closest('.date-today[data-for]');
+  if(!b)return;
+  const inp=document.getElementById(b.dataset.for);
+  if(inp&&!inp.disabled){inp.value=today();inp.dispatchEvent(new Event('change',{bubbles:true}))}
+});

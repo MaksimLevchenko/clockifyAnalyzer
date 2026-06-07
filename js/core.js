@@ -381,26 +381,25 @@ function initialUnpaidWork(es,anchorDate,payDays,actuals,fallbackRate){
    деньги падают на баланс. payout==null ⇒ payout=accrual (старое поведение). */
 function clampPayDay(d){return Math.min(28,Math.max(1,(Number(d)||1)|0))}
 
-/* Из state.payDays (числа дня зп) + state.payoutDays (выровнено, null=совпадает)
-   собирает пары {accrual, payout}, отсортированные и дедуплицированные по accrual. */
-function paySchedule(payDays,payoutDays){
-  const pd=(payDays||[]).filter(d=>Number.isFinite(+d));
-  const po=payoutDays||[];
-  const pairs=pd.map((a,i)=>{
-    const pv=po[i];
-    return{accrual:clampPayDay(a),payout:(pv==null||pv==='')?clampPayDay(a):clampPayDay(pv)};
-  }).sort((x,y)=>x.accrual-y.accrual);
+/* Из state.payDays (числа дня зп) собирает расписание [{accrual, payout}], где
+   payout по умолчанию = accrual (один день). Конкретные сдвиги задаются не здесь,
+   а фактическими датами (см. effectivePayEvents). Дедуп/сортировка, максимум 4. */
+function paySchedule(payDays){
   const seen=new Set(),out=[];
-  for(const pr of pairs){if(seen.has(pr.accrual))continue;seen.add(pr.accrual);out.push(pr);if(out.length>=4)break}
-  return out;
+  (payDays||[]).filter(d=>Number.isFinite(+d)).map(clampPayDay).sort((a,b)=>a-b).forEach(a=>{
+    if(seen.has(a))return;seen.add(a);out.push({accrual:a,payout:a});
+  });
+  return out.slice(0,4);
 }
 
-/* Конкретные события выплат в окне: для каждого месяца и записи расписания —
-   accrualDate (число accrual) и payoutDate (число payout, в след. месяце, если
-   payout<accrual). Фактические даты (actuals) подменяют ближайшую дату ВЫПЛАТЫ
-   в окне ±PAYDAY_MATCH_WINDOW; несвязанные — самостоятельные выплаты. Возврат —
-   [{accrual,payout}] (YYYY-MM-DD), отсортировано по payout; оставляем события,
-   у которых accrual ИЛИ payout попадает в [start,end]. */
+/* Конкретные события выплат в окне. По умолчанию каждое событие месяца — это
+   {accrual: день зп, payout: тот же день}. Фактические даты — пары
+   {payout, accrual?} (приход денег + день учёта часов): подменяют ближайшее по
+   дню зп запланированное событие в окне ±PAYDAY_MATCH_WINDOW (payout → дата
+   прихода; accrual → если задан, реальный день учёта); несвязанные —
+   самостоятельные выплаты. Старый формат actuals (строка) = {payout, accrual:null}.
+   Возврат [{accrual,payout}] (YYYY-MM-DD), отсортировано по payout; оставляем
+   события, у которых accrual ИЛИ payout попадает в [start,end]. */
 function effectivePayEvents(start,end,schedule,actuals){
   if(!schedule||!schedule.length)return[];
   const pStart=addDays(start,-40),pEnd=addDays(end,40);
@@ -410,25 +409,24 @@ function effectivePayEvents(start,end,schedule,actuals){
   while(y<ey||(y===ey&&m<=em)){
     for(const s of schedule){
       const accrualDate=`${y}-${pad2(m)}-${pad2(s.accrual)}`;
-      let py=y,pm=m;
-      if(s.payout<s.accrual){pm++;if(pm>12){pm=1;py++}}
-      events.push({accrual:accrualDate,payout:`${py}-${pad2(pm)}-${pad2(s.payout)}`});
+      events.push({accrual:accrualDate,payout:accrualDate});
     }
     m++;if(m>12){m=1;y++}
   }
   const bypay=(a,b)=>a.payout<b.payout?-1:a.payout>b.payout?1:(a.accrual<b.accrual?-1:1);
-  events.sort(bypay);
-  const acts=[...new Set((actuals||[]).filter(Boolean))].sort();
+  const acts=(actuals||[]).map(a=>typeof a==='string'?{payout:a,accrual:null}:{payout:a&&a.payout,accrual:(a&&a.accrual)||null})
+    .filter(a=>a.payout).sort((x,y)=>x.payout<y.payout?-1:1);
   const claimed=new Array(events.length).fill(false);
   for(const a of acts){
+    const refD=a.accrual||a.payout;
     let best=-1,bestDist=Infinity;
     for(let i=0;i<events.length;i++){
       if(claimed[i])continue;
-      const dist=Math.abs(daysBetween(events[i].payout,a));
+      const dist=Math.abs(daysBetween(events[i].accrual,refD));
       if(dist<bestDist){bestDist=dist;best=i}
     }
-    if(best>=0&&bestDist<=PAYDAY_MATCH_WINDOW){claimed[best]=true;events[best].payout=a}
-    else events.push({accrual:a,payout:a});
+    if(best>=0&&bestDist<=PAYDAY_MATCH_WINDOW){claimed[best]=true;events[best].payout=a.payout;if(a.accrual)events[best].accrual=a.accrual}
+    else events.push({accrual:a.accrual||a.payout,payout:a.payout});
   }
   events.sort(bypay);
   return events.filter(e=>(e.accrual>=start&&e.accrual<=end)||(e.payout>=start&&e.payout<=end));
@@ -487,7 +485,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const expMap=expandExpenses(exs,start,end,{baseDate:ref});
   const incMap=new Map();
   for(const inc of incs||[])if(inc.date>=start&&inc.date<=end)incMap.set(inc.date,(incMap.get(inc.date)||0)+Number(inc.amount));
-  const schedule=paySchedule(payDays,opts.payoutDays);
+  const schedule=paySchedule(payDays);
   const useDelayed=schedule.length>0;
   const tf=1-taxRate;
   /* Pay events around the anchor and across the horizon: each pairs an accrual
@@ -852,7 +850,7 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   /* With a pay schedule, income lands on PAYOUT days as steps (period earnings
      deposited then), not spread daily — consistent with the forecast. Without a
      schedule, fall back to daily earned. Endpoints stay pinned to checkpoints. */
-  const schedule=paySchedule(opts.payDays,opts.payoutDays);
+  const schedule=paySchedule(opts.payDays);
   const useDelayed=schedule.length>0;
   let depositByDay=null;
   if(useDelayed){
@@ -908,7 +906,7 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   /* Actual dates only refine boundaries when a schedule exists — without one
      income is accrued daily and actuals are not used (matches the UI, which
      blocks marking actual dates until pay-day numbers are set). */
-  const schedule=paySchedule(opts.payDays,opts.payoutDays);
+  const schedule=paySchedule(opts.payDays);
   const useDelayed=schedule.length>0;
   const payActuals=useDelayed&&opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
   const excluded=new Set((opts.excluded||[]).map(x=>x.from+'|'+x.to));

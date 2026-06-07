@@ -314,7 +314,7 @@ function renderActualExpenses(){
   if(!card)return;
   const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
     excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
-    payDays:state.payDays,payoutDays:state.payoutDays,payDayActuals:state.payDayActuals
+    payDays:state.payDays,payDayActuals:state.payDayActuals
   });
   if(!cf){card.style.display='none';return}
   card.style.display='';
@@ -415,50 +415,40 @@ document.getElementById('pd-add').addEventListener('click',()=>{
   const last=state.payDays.length?state.payDays[state.payDays.length-1]:0;
   const next=state.payDays.length?Math.min(28,last+10):5;
   state.payDays.push(next);
-  if(!Array.isArray(state.payoutDays))state.payoutDays=[];
-  state.payoutDays.push(null);
   saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
 });
 
 function renderPayDays(){
   const list=document.getElementById('pd-list');
-  if(!Array.isArray(state.payoutDays))state.payoutDays=[];
-  /* Keep payDays (день зп) and payoutDays (день выплаты) aligned & sorted by accrual. */
-  const pairs=state.payDays.map((a,i)=>({accrual:a,payout:state.payoutDays[i]==null?null:state.payoutDays[i]}))
-    .sort((x,y)=>x.accrual-y.accrual);
-  state.payDays=pairs.map(p=>p.accrual);
-  state.payoutDays=pairs.map(p=>p.payout);
-  if(!pairs.length){list.innerHTML='<small class="note">Не настроены — доход начисляется ежедневно (как раньше).</small>';}
+  const pds=state.payDays.slice().sort((a,b)=>a-b);
+  state.payDays=pds;
+  if(!pds.length){list.innerHTML='<small class="note">Не настроены — доход начисляется ежедневно (как раньше).</small>';}
   else{
-    list.innerHTML=pairs.map((p,i)=>`<div class="field"><label>Зп ${i+1}: день зп → день выплаты</label><div style="display:flex;gap:6px;align-items:center"><input type="number" min="1" max="28" value="${p.accrual}" data-pdi="${i}" style="width:64px" title="День зп — отсечка часов"><span class="note">→</span><input type="number" min="1" max="28" value="${p.payout==null?'':p.payout}" placeholder="= ${p.accrual}" data-pdpi="${i}" style="width:64px" title="День выплаты — когда приходят деньги (пусто = день зп)"><button class="btn terra sm" data-pddel="${i}">×</button></div></div>`).join('');
+    list.innerHTML=pds.map((d,i)=>`<div class="field"><label>День зп ${i+1}</label><div style="display:flex;gap:6px;align-items:center"><input type="number" min="1" max="28" value="${d}" data-pdi="${i}" style="width:80px" title="День зп — отсечка часов; деньги по умолчанию приходят в этот же день"><button class="btn terra sm" data-pddel="${i}">×</button></div></div>`).join('');
     list.querySelectorAll('[data-pdi]').forEach(inp=>inp.addEventListener('change',()=>{
       const i=+inp.dataset.pdi;
       state.payDays[i]=Math.max(1,Math.min(28,parseInt(inp.value)||1));
       saveState();renderPayDays();afterPayDaysChange();
     }));
-    list.querySelectorAll('[data-pdpi]').forEach(inp=>inp.addEventListener('change',()=>{
-      const i=+inp.dataset.pdpi;const v=inp.value.trim();
-      state.payoutDays[i]=v===''?null:Math.max(1,Math.min(28,parseInt(v)||1));
-      saveState();renderPayDays();afterPayDaysChange();
-    }));
     list.querySelectorAll('[data-pddel]').forEach(b=>b.addEventListener('click',()=>{
-      const i=+b.dataset.pddel;
-      state.payDays.splice(i,1);state.payoutDays.splice(i,1);
+      state.payDays.splice(+b.dataset.pddel,1);
       saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
     }));
   }
-  document.getElementById('pd-add').disabled=pairs.length>=4;
+  document.getElementById('pd-add').disabled=pds.length>=4;
 }
 
 /* ----- actual pay dates (overrides for early/late salary) ----- */
 document.getElementById('pda-add').addEventListener('click',()=>{
-  if(!state.payDays.length){toast('Сначала задай дни выплаты');return}
-  const inp=document.getElementById('pda-date');
-  const d=inp.value;
-  if(!d){toast('Укажи дату');return}
-  if(d>today()){toast('Дата выплаты не может быть в будущем');return}
-  if(state.payDayActuals.includes(d)){toast('Эта дата уже отмечена');return}
-  state.payDayActuals.push(d);inp.value='';
+  if(!state.payDays.length){toast('Сначала задай дни зп');return}
+  const pInp=document.getElementById('pda-payout'),aInp=document.getElementById('pda-accrual');
+  const payout=pInp.value,accrual=aInp.value||null;
+  if(!payout){toast('Укажи день выплаты (приход денег)');return}
+  if(payout>today()){toast('Дата выплаты не может быть в будущем');return}
+  if(accrual&&accrual>payout){toast('День учёта часов не может быть позже дня выплаты');return}
+  if(state.payDayActuals.some(a=>a.payout===payout)){toast('Эта дата выплаты уже отмечена');return}
+  state.payDayActuals.push({payout,accrual});
+  pInp.value='';aInp.value='';
   saveState();renderPayDayActuals();renderActualExpenses();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 });
@@ -466,28 +456,33 @@ document.getElementById('pda-add').addEventListener('click',()=>{
 function renderPayDayActuals(){
   const list=document.getElementById('pda-list');
   if(!list)return;
-  const dateInp=document.getElementById('pda-date'),addBtn=document.getElementById('pda-add');
+  const pInp=document.getElementById('pda-payout'),aInp=document.getElementById('pda-accrual'),addBtn=document.getElementById('pda-add');
   const hasSchedule=state.payDays.length>0;
-  if(dateInp)dateInp.disabled=!hasSchedule;
+  if(pInp)pInp.disabled=!hasSchedule;
+  if(aInp)aInp.disabled=!hasSchedule;
   if(addBtn)addBtn.disabled=!hasSchedule;
-  if(!hasSchedule){list.innerHTML='<small class="note">Сначала задай <b>дни выплаты</b> выше — без расписания отметить фактическую дату нельзя.</small>';return}
-  const acts=[...new Set(state.payDayActuals)].sort();
+  if(!hasSchedule){list.innerHTML='<small class="note">Сначала задай <b>дни зп</b> выше — без расписания отметить фактическую дату нельзя.</small>';return}
+  if(pInp&&!pInp.value)pInp.value=today();
+  const acts=[...state.payDayActuals].sort((x,y)=>x.payout<y.payout?-1:1);
   state.payDayActuals=acts;
-  if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням выплаты выше.</small>';return}
+  if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням зп выше.</small>';return}
   const max=esc(today());
-  list.innerHTML=acts.map((d,i)=>`<div class="field"><label>Выплата ${i+1}</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(d)}" max="${max}" data-pdai="${i}" style="width:150px"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
-  list.querySelectorAll('[data-pdai]').forEach(inp=>inp.addEventListener('change',()=>{
-    const i=+inp.dataset.pdai,v=inp.value;
+  list.innerHTML=acts.map((a,i)=>`<div class="field"><label>Выплата ${i+1}: приход → учёт часов</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(a.payout)}" max="${max}" data-pdaip="${i}" style="width:150px" title="День прихода денег"><span class="note">→</span><input type="date" value="${esc(a.accrual||'')}" max="${max}" data-pdaia="${i}" style="width:150px" title="День учёта часов (опц., пусто = по дню зп)"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
+  const commit=()=>{saveState();renderPayDayActuals();renderActualExpenses();if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true)};
+  list.querySelectorAll('[data-pdaip]').forEach(inp=>inp.addEventListener('change',()=>{
+    const i=+inp.dataset.pdaip,v=inp.value;
     if(!v||v>today()){toast('Дата выплаты не может быть в будущем');renderPayDayActuals();return}
-    if(state.payDayActuals.some((x,j)=>x===v&&j!==i)){toast('Эта дата уже отмечена');renderPayDayActuals();return}
-    state.payDayActuals[i]=v;
-    saveState();renderPayDayActuals();renderActualExpenses();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+    if(state.payDayActuals.some((x,j)=>x.payout===v&&j!==i)){toast('Эта дата выплаты уже отмечена');renderPayDayActuals();return}
+    if(state.payDayActuals[i].accrual&&state.payDayActuals[i].accrual>v){toast('День учёта часов не может быть позже дня выплаты');renderPayDayActuals();return}
+    state.payDayActuals[i].payout=v;commit();
+  }));
+  list.querySelectorAll('[data-pdaia]').forEach(inp=>inp.addEventListener('change',()=>{
+    const i=+inp.dataset.pdaia,v=inp.value||null;
+    if(v&&v>state.payDayActuals[i].payout){toast('День учёта часов не может быть позже дня выплаты');renderPayDayActuals();return}
+    state.payDayActuals[i].accrual=v;commit();
   }));
   list.querySelectorAll('[data-pdadel]').forEach(b=>b.addEventListener('click',()=>{
-    state.payDayActuals.splice(+b.dataset.pdadel,1);
-    saveState();renderPayDayActuals();renderActualExpenses();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+    state.payDayActuals.splice(+b.dataset.pdadel,1);commit();
   }));
 }
 
@@ -624,7 +619,7 @@ function runForecast(auto){
   try{
     const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
       excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
-      payDays:state.payDays,payoutDays:state.payoutDays,payDayActuals:state.payDayActuals
+      payDays:state.payDays,payDayActuals:state.payDayActuals
     });
     const ae=autoExpenseEstimate(cf);
     const anchorEl=document.getElementById('fc-anchor');
@@ -633,7 +628,6 @@ function runForecast(auto){
       halfLife:state.halfLife,
       taxRate:state.taxRate,
       vacations:state.vacations,
-      payoutDays:state.payoutDays,
       payDayActuals:state.payDayActuals,
       anchorDate,
       autoMonthlyRates:ae?ae.sampleRates:null,
@@ -642,7 +636,7 @@ function runForecast(auto){
     r.cashFlow=cf;r.autoEstimate=ae;
     r.past=reconstructPastBalance(state.entries,state.expenses,state.incomes,state.checkpoints,{
       taxRate:state.taxRate,fallbackRate:state.rate,anchorDate:r.startDate,
-      payDays:state.payDays,payoutDays:state.payoutDays,payDayActuals:state.payDayActuals
+      payDays:state.payDays,payDayActuals:state.payDayActuals
     });
     lastFc=r;
     document.getElementById('card-fc-extras').style.display='';

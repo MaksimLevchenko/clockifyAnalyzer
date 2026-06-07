@@ -53,10 +53,10 @@ input,select{
 }
 input[type=number]{font-family:var(--mono)}
 input:focus,select:focus{border-color:var(--gold); box-shadow:0 0 0 3px rgba(169,121,42,.15)}
-input[type=date]{min-width:150px; cursor:pointer; color-scheme:light}
+input[type=date]{min-width:150px; color-scheme:light}
 input[type=date]:hover{border-color:var(--gold)}
-input[type=date]::-webkit-calendar-picker-indicator{cursor:pointer; opacity:.5; padding:2px; border-radius:5px; transition:.15s}
-input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1; background:rgba(169,121,42,.18)}
+input[type=date]::-webkit-calendar-picker-indicator{cursor:pointer; opacity:.55; padding:3px; margin-left:2px; border-radius:5px; transition:.15s}
+input[type=date]::-webkit-calendar-picker-indicator:hover{opacity:1; background:rgba(169,121,42,.2)}
 .date-wrap{display:inline-flex; align-items:center; gap:5px}
 .btn.date-today{padding:6px 10px; font-size:12.5px}
 

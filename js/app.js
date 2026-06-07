@@ -1033,13 +1033,6 @@ switchTab(location.hash.slice(1));
 maybeAutoPull();
 
 /* ========================= DATE INPUT UX ========================= */
-/* Клик по всему полю даты открывает календарь (а не только по иконке) — чтобы
-   не вводить дату руками. Работает и для динамически отрисованных полей. */
-document.addEventListener('click',e=>{
-  const inp=e.target.closest&&e.target.closest('input[type=date]');
-  if(inp&&!inp.disabled&&typeof inp.showPicker==='function'){try{inp.showPicker()}catch(_){}}
-});
-
 /* К каждому полю даты (кроме плотных табличных редакторов в ячейках) добавляем
    кнопку «сегодня». dispatch('change') — чтобы сработали существующие обработчики. */
 function enhanceDateInput(inp){

@@ -313,6 +313,7 @@ function expandExpenses(exs,s,e,opts){
 function pad2(n){return String(n).padStart(2,'0')}
 
 const PAYDAY_MATCH_WINDOW=7;
+const MAX_PAYOUT_DELAY=31;
 
 /* Effective payday dates (YYYY-MM-DD) within [start,end]. The monthly
    schedule (payDays = month-days) is projected onto concrete dates; each
@@ -417,15 +418,35 @@ function effectivePayEvents(start,end,schedule,actuals){
   const acts=(actuals||[]).map(a=>typeof a==='string'?{payout:a,accrual:null}:{payout:a&&a.payout,accrual:(a&&a.accrual)||null})
     .filter(a=>a.payout).sort((x,y)=>x.payout<y.payout?-1:1);
   const claimed=new Array(events.length).fill(false);
-  for(const a of acts){
-    const refD=a.accrual||a.payout;
+  const nearestByAccrual=(d)=>{
     let best=-1,bestDist=Infinity;
     for(let i=0;i<events.length;i++){
       if(claimed[i])continue;
-      const dist=Math.abs(daysBetween(events[i].accrual,refD));
+      const dist=Math.abs(daysBetween(events[i].accrual,d));
       if(dist<bestDist){bestDist=dist;best=i}
     }
-    if(best>=0&&bestDist<=PAYDAY_MATCH_WINDOW){claimed[best]=true;events[best].payout=a.payout;if(a.accrual)events[best].accrual=a.accrual}
+    return best>=0&&bestDist<=PAYDAY_MATCH_WINDOW?best:-1;
+  };
+  for(const a of acts){
+    let best;
+    if(a.accrual){
+      /* Явный день учёта — переносим ближайшее по дню зп запланированное событие. */
+      best=nearestByAccrual(a.accrual);
+    }else{
+      /* Без дня учёта: сперва ближайший день зп в окне ±7 (ранняя/поздняя зп в
+         пределах недели — цепляем к нему). Иначе — самый поздний день зп НЕ позже
+         даты прихода (задержка до MAX_PAYOUT_DELAY): будущая/поздняя выплата
+         закрывает свой период, а не создаёт дубль. */
+      best=nearestByAccrual(a.payout);
+      if(best<0)for(let i=0;i<events.length;i++){
+        if(claimed[i])continue;
+        const ev=events[i];
+        if(ev.accrual<=a.payout&&daysBetween(ev.accrual,a.payout)<=MAX_PAYOUT_DELAY){
+          if(best<0||ev.accrual>events[best].accrual)best=i;
+        }
+      }
+    }
+    if(best>=0){claimed[best]=true;events[best].payout=a.payout;if(a.accrual)events[best].accrual=a.accrual}
     else events.push({accrual:a.accrual||a.payout,payout:a.payout});
   }
   events.sort(bypay);

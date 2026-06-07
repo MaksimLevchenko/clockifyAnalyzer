@@ -444,7 +444,6 @@ document.getElementById('pda-add').addEventListener('click',()=>{
   const pInp=document.getElementById('pda-payout'),aInp=document.getElementById('pda-accrual');
   const payout=pInp.value,accrual=aInp.value||null;
   if(!payout){toast('Укажи день выплаты (приход денег)');return}
-  if(payout>today()){toast('Дата выплаты не может быть в будущем');return}
   if(accrual&&accrual>payout){toast('День учёта часов не может быть позже дня выплаты');return}
   if(state.payDayActuals.some(a=>a.payout===payout)){toast('Эта дата выплаты уже отмечена');return}
   state.payDayActuals.push({payout,accrual});
@@ -466,12 +465,11 @@ function renderPayDayActuals(){
   const acts=[...state.payDayActuals].sort((x,y)=>x.payout<y.payout?-1:1);
   state.payDayActuals=acts;
   if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням зп выше.</small>';return}
-  const max=esc(today());
-  list.innerHTML=acts.map((a,i)=>`<div class="field"><label>Выплата ${i+1}: приход → учёт часов</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(a.payout)}" max="${max}" data-pdaip="${i}" style="width:150px" title="День прихода денег"><span class="note">→</span><input type="date" value="${esc(a.accrual||'')}" max="${max}" data-pdaia="${i}" style="width:150px" title="День учёта часов (опц., пусто = по дню зп)"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
+  list.innerHTML=acts.map((a,i)=>`<div class="field"><label>Выплата ${i+1}: приход → учёт часов</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(a.payout)}" data-pdaip="${i}" style="width:150px" title="День прихода денег (может быть в будущем)"><span class="note">→</span><input type="date" value="${esc(a.accrual||'')}" data-pdaia="${i}" style="width:150px" title="День учёта часов (опц., пусто = по дню зп)"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
   const commit=()=>{saveState();renderPayDayActuals();renderActualExpenses();if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true)};
   list.querySelectorAll('[data-pdaip]').forEach(inp=>inp.addEventListener('change',()=>{
     const i=+inp.dataset.pdaip,v=inp.value;
-    if(!v||v>today()){toast('Дата выплаты не может быть в будущем');renderPayDayActuals();return}
+    if(!v){toast('Укажи дату выплаты');renderPayDayActuals();return}
     if(state.payDayActuals.some((x,j)=>x.payout===v&&j!==i)){toast('Эта дата выплаты уже отмечена');renderPayDayActuals();return}
     if(state.payDayActuals[i].accrual&&state.payDayActuals[i].accrual>v){toast('День учёта часов не может быть позже дня выплаты');renderPayDayActuals();return}
     state.payDayActuals[i].payout=v;commit();
@@ -1033,3 +1031,39 @@ function afterDataChange(opts){
 syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderPayDayActuals();renderSync();
 switchTab(location.hash.slice(1));
 maybeAutoPull();
+
+/* ========================= DATE INPUT UX ========================= */
+/* Клик по всему полю даты открывает календарь (а не только по иконке) — чтобы
+   не вводить дату руками. Работает и для динамически отрисованных полей. */
+document.addEventListener('click',e=>{
+  const inp=e.target.closest&&e.target.closest('input[type=date]');
+  if(inp&&!inp.disabled&&typeof inp.showPicker==='function'){try{inp.showPicker()}catch(_){}}
+});
+
+/* К каждому полю даты (кроме плотных табличных редакторов в ячейках) добавляем
+   кнопку «сегодня». dispatch('change') — чтобы сработали существующие обработчики. */
+function enhanceDateInput(inp){
+  if(inp.dataset.dx)return;inp.dataset.dx='1';
+  if(inp.closest('td'))return; // в ячейках таблиц — только клик-открытие, без кнопки
+  const wrap=document.createElement('span');wrap.className='date-wrap';
+  inp.parentNode.insertBefore(wrap,inp);wrap.appendChild(inp);
+  const b=document.createElement('button');
+  b.type='button';b.className='btn ghost sm date-today';b.textContent='сегодня';b.tabIndex=-1;
+  b.addEventListener('click',()=>{
+    if(inp.disabled)return;
+    inp.value=today();
+    inp.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  wrap.appendChild(b);
+}
+function enhanceAllDates(root){
+  (root||document).querySelectorAll('input[type=date]:not([data-dx])').forEach(enhanceDateInput);
+}
+new MutationObserver(muts=>{
+  for(const m of muts)for(const n of m.addedNodes){
+    if(n.nodeType!==1)continue;
+    if(n.matches&&n.matches('input[type=date]'))enhanceDateInput(n);
+    else if(n.querySelectorAll)enhanceAllDates(n);
+  }
+}).observe(document.body,{childList:true,subtree:true});
+enhanceAllDates();

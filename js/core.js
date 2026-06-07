@@ -376,6 +376,79 @@ function initialUnpaidWork(es,anchorDate,payDays,actuals,fallbackRate){
   return{money,hours};
 }
 
+/* ----- accrual/payout split ----------------------------------------------
+   «День зп» (accrual) = отсечка часов периода; «день выплаты» (payout) = когда
+   деньги падают на баланс. payout==null ⇒ payout=accrual (старое поведение). */
+function clampPayDay(d){return Math.min(28,Math.max(1,(Number(d)||1)|0))}
+
+/* Из state.payDays (числа дня зп) + state.payoutDays (выровнено, null=совпадает)
+   собирает пары {accrual, payout}, отсортированные и дедуплицированные по accrual. */
+function paySchedule(payDays,payoutDays){
+  const pd=(payDays||[]).filter(d=>Number.isFinite(+d));
+  const po=payoutDays||[];
+  const pairs=pd.map((a,i)=>{
+    const pv=po[i];
+    return{accrual:clampPayDay(a),payout:(pv==null||pv==='')?clampPayDay(a):clampPayDay(pv)};
+  }).sort((x,y)=>x.accrual-y.accrual);
+  const seen=new Set(),out=[];
+  for(const pr of pairs){if(seen.has(pr.accrual))continue;seen.add(pr.accrual);out.push(pr);if(out.length>=4)break}
+  return out;
+}
+
+/* Конкретные события выплат в окне: для каждого месяца и записи расписания —
+   accrualDate (число accrual) и payoutDate (число payout, в след. месяце, если
+   payout<accrual). Фактические даты (actuals) подменяют ближайшую дату ВЫПЛАТЫ
+   в окне ±PAYDAY_MATCH_WINDOW; несвязанные — самостоятельные выплаты. Возврат —
+   [{accrual,payout}] (YYYY-MM-DD), отсортировано по payout; оставляем события,
+   у которых accrual ИЛИ payout попадает в [start,end]. */
+function effectivePayEvents(start,end,schedule,actuals){
+  if(!schedule||!schedule.length)return[];
+  const pStart=addDays(start,-40),pEnd=addDays(end,40);
+  const events=[];
+  let[y,m]=pStart.split('-').map(Number);
+  const[ey,em]=pEnd.split('-').map(Number);
+  while(y<ey||(y===ey&&m<=em)){
+    for(const s of schedule){
+      const accrualDate=`${y}-${pad2(m)}-${pad2(s.accrual)}`;
+      let py=y,pm=m;
+      if(s.payout<s.accrual){pm++;if(pm>12){pm=1;py++}}
+      events.push({accrual:accrualDate,payout:`${py}-${pad2(pm)}-${pad2(s.payout)}`});
+    }
+    m++;if(m>12){m=1;y++}
+  }
+  const bypay=(a,b)=>a.payout<b.payout?-1:a.payout>b.payout?1:(a.accrual<b.accrual?-1:1);
+  events.sort(bypay);
+  const acts=[...new Set((actuals||[]).filter(Boolean))].sort();
+  const claimed=new Array(events.length).fill(false);
+  for(const a of acts){
+    let best=-1,bestDist=Infinity;
+    for(let i=0;i<events.length;i++){
+      if(claimed[i])continue;
+      const dist=Math.abs(daysBetween(events[i].payout,a));
+      if(dist<bestDist){bestDist=dist;best=i}
+    }
+    if(best>=0&&bestDist<=PAYDAY_MATCH_WINDOW){claimed[best]=true;events[best].payout=a}
+    else events.push({accrual:a,payout:a});
+  }
+  events.sort(bypay);
+  return events.filter(e=>(e.accrual>=start&&e.accrual<=end)||(e.payout>=start&&e.payout<=end));
+}
+
+/* Для каждого события — заработок периода (prevAccrual, accrual] из реальных
+   записей. Возврат: Map accrualDate -> {gross,hours,prev,payout}. */
+function payPeriodEarned(es,events,fallbackRate){
+  const fb=Number(fallbackRate)||0;
+  const sorted=[...events].sort((a,b)=>a.accrual<b.accrual?-1:1);
+  const m=new Map();
+  for(let i=0;i<sorted.length;i++){
+    const A=sorted[i].accrual,prev=i>0?sorted[i-1].accrual:null;
+    let g=0,h=0;
+    for(const e of es||[])if(e.date<=A&&(!prev||e.date>prev)){g+=e.hours*(e.rate>0?e.rate:fb);h+=e.hours}
+    m.set(A,{gross:g,hours:h,prev,payout:sorted[i].payout});
+  }
+  return m;
+}
+
 /* ----- forecast ----- */
 function mulberry32(a){
   return function(){
@@ -414,37 +487,54 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const expMap=expandExpenses(exs,start,end,{baseDate:ref});
   const incMap=new Map();
   for(const inc of incs||[])if(inc.date>=start&&inc.date<=end)incMap.set(inc.date,(incMap.get(inc.date)||0)+Number(inc.amount));
-  const useDelayed=!!(payDays&&payDays.length);
-  /* Effective payday DATES across the forecast range: scheduled occurrences in
-     the past portion (anchor→today) are relocated to recorded actual dates,
-     while future occurrences stay on schedule (no actuals exist there). Keeps
-     the simulated salary timing consistent with the initial unpaid pool. */
-  const paySet=new Set(useDelayed?effectivePayDays(start,end,payDays,opts.payDayActuals):[]);
-  const isPay=ds=>paySet.has(ds);
-  /* Initial unpaid pool is also net-of-tax — the user's checkpoint balance
-     is post-tax, and pending salary will also arrive post-tax. */
-  const initPool=useDelayed?initialUnpaidWork(es,balanceDate,payDays,opts.payDayActuals,rate):{money:0,hours:0};
-  const init=initPool.money*(1-taxRate);
-  const initHours=initPool.hours;
-  /* Unpaid pool as of TODAY (not the anchor) — what's accrued since the last
-     payday on/before now. Drives the "Зарплата и невыплаченное" cards so they
-     describe the present moment even when the anchor checkpoint is in the past. */
-  const nowPool=useDelayed?initialUnpaidWork(es,ref,payDays,opts.payDayActuals,rate):{money:0,hours:0};
-  const unpaidNow=nowPool.money*(1-taxRate);
-  const unpaidNowHours=nowPool.hours;
-  /* Previous (already-paid) salary — from REAL entries, not the simulation: the
-     pay period ending at the most recent payday on/before today. */
-  let prevSalary=null;
+  const schedule=paySchedule(payDays,opts.payoutDays);
+  const useDelayed=schedule.length>0;
+  const tf=1-taxRate;
+  /* Pay events around the anchor and across the horizon: each pairs an accrual
+     day (день зп — hours cutoff) with a payout day (день выплаты — money lands). */
+  const events=useDelayed?effectivePayEvents(addDays(balanceDate,-45),end,schedule,opts.payDayActuals):[];
+  const accrualSorted=[...events].sort((a,b)=>a.accrual<b.accrual?-1:1);
+  const periods=payPeriodEarned(es,events,rate); // accrualDate -> {gross,hours,prev,payout}
+  /* accrual day -> payout day, only for accruals inside the forecast range —
+     these close their period during the simulation. */
+  const accrualToPayout=new Map();
+  for(const ev of events)if(ev.accrual>=start&&ev.accrual<=end)accrualToPayout.set(ev.accrual,ev.payout);
+  /* Seed state at the anchor: open (not-yet-closed) period + lots already closed
+     but not yet deposited (payout after the anchor). Net-of-tax. */
+  let openMoney=0,openHours=0;const seededLots=[];
   if(useDelayed){
-    const lastPay=lastPayDayBefore(ref,payDays,opts.payDayActuals);
-    if(lastPay){
-      const prevPay=lastPayDayBefore(addDays(lastPay,-1),payDays,opts.payDayActuals);
-      let pm=0,ph=0;
-      for(const e of es)if(e.date<=lastPay&&(!prevPay||e.date>prevPay)){
-        pm+=e.hours*(e.rate>0?e.rate:rate);ph+=e.hours;
-      }
-      prevSalary={date:lastPay,money:pm*(1-taxRate),hours:ph,
-        periodFrom:prevPay?addDays(prevPay,1):(es.length?es[0].date:lastPay)};
+    let lastAccrual=null;
+    for(const ev of accrualSorted){if(ev.accrual<=balanceDate)lastAccrual=ev.accrual;else break}
+    let og=0,oh=0;
+    for(const e of es)if(e.date<=balanceDate&&(!lastAccrual||e.date>lastAccrual)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
+    openMoney=og*tf;openHours=oh;
+    for(const ev of events)if(ev.accrual<=balanceDate&&ev.payout>balanceDate){
+      const pe=periods.get(ev.accrual);if(pe)seededLots.push({payout:ev.payout,money:pe.gross*tf,hours:pe.hours});
+    }
+  }
+  /* initialUnpaid = всё начисленное до якоря, но ещё не на балансе (открытый
+     период + ждущие лоты) — «долг с прошлого», который прогноз выплатит. */
+  const init=openMoney+seededLots.reduce((s,l)=>s+l.money,0);
+  const initHours=openHours+seededLots.reduce((s,l)=>s+l.hours,0);
+  /* Salary state as of TODAY (ref) for the "Зарплата и невыплаченное" cards. */
+  let unpaidNow=0,unpaidNowHours=0,pendingNow=null,prevSalary=null;
+  if(useDelayed){
+    let lastAccrualRef=null;
+    for(const ev of accrualSorted){if(ev.accrual<=ref)lastAccrualRef=ev.accrual;else break}
+    let og=0,oh=0;
+    for(const e of es)if(e.date<=ref&&(!lastAccrualRef||e.date>lastAccrualRef)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
+    let pm=0,ph=0,nextPayout=null;
+    for(const ev of events)if(ev.accrual<=ref&&ev.payout>ref){
+      const pe=periods.get(ev.accrual);if(pe){pm+=pe.gross*tf;ph+=pe.hours;if(!nextPayout||ev.payout<nextPayout)nextPayout=ev.payout}
+    }
+    unpaidNow=og*tf+pm;unpaidNowHours=oh+ph;
+    if(pm>0)pendingNow={money:pm,hours:ph,nextPayout};
+    let lastEv=null;
+    for(const ev of events)if(ev.payout<=ref&&(!lastEv||ev.payout>lastEv.payout))lastEv=ev;
+    if(lastEv){
+      const pe=periods.get(lastEv.accrual);
+      if(pe)prevSalary={date:lastEv.payout,money:pe.gross*tf,hours:pe.hours,
+        periodFrom:pe.prev?addDays(pe.prev,1):(es.length?es[0].date:lastEv.accrual),periodTo:lastEv.accrual};
     }
   }
   const rand=mulberry32(seed);
@@ -519,15 +609,16 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
 
   const run=new Float64Array(nSims).fill(balance);
   const minRun=new Float64Array(nSims).fill(balance);
-  const unpaid=new Float64Array(nSims).fill(init);
+  /* Delayed-payday state: openPool — accrued in the currently-open period (since
+     last accrual); lots — closed periods awaiting their payout date, each with a
+     per-sim amount. openExpH — expected gross hours of the open period. */
+  const openPool=new Float64Array(nSims).fill(openMoney);
+  const lots=seededLots.map(l=>({payout:l.payout,amount:new Float64Array(nSims).fill(l.money),hours:l.hours}));
+  let openExpH=openHours;
   const mean=[],p10=[],p90=[];const payDayDates=[];
   const expectedWork=[],expectedExp=[],expectedInc=[];
   const vacationDays=[];
   let nextSalary=null;
-  /* Expected gross hours accrued since the last payday — reset on every payday,
-     so the captured next-salary reflects only its own pay period (not everything
-     since the anchor). Seeded with the anchor's unpaid hours for the first period. */
-  let unpaidExpH=initHours;
   /* Snapshots of per-sim run[] at each TARGET checkpoint date — used
      to compute P(reaching) for that target after calibration. */
   const targetDateSet=new Set(targetCps.filter(c=>c.date>balanceDate&&c.date<=end).map(c=>c.date));
@@ -537,10 +628,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     let out=expMap.get(ds)||0;
     const isVac=isVacationDay(ds,vacations);
     if(isVac)vacationDays.push(ds);
-    const payToday=useDelayed&&isPay(ds);
-    if(payToday)payDayDates.push(ds);
     const grossExpH=isVac?0:wm.expH[w];
-    unpaidExpH+=grossExpH;
     expectedWork.push(grossExpH*rate*(1-taxRate));
     /* Auto-expense is normalized per CALENDAR month, matching the
        `daily` expense kind: amount/daysInMonth(ds) so monthly total
@@ -549,8 +637,21 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     const expectedAutoOut=autoMeanRate/dim;
     expectedExp.push(out+expectedAutoOut);
     expectedInc.push(inEv);
-    const captureNext=payToday&&!nextSalary&&ds>=ref;
-    const todayBonuses=captureNext?new Float64Array(nSims):null;
+    /* Delayed-payday bookkeeping: maybe close the open period (accrual day) into
+       a lot; maybe release lots whose payout == today (deposit). A lot whose
+       payout equals its accrual closes and pays out the same day (== old model). */
+    let newLot=null,releasing=null,depositToday=false,captureNext=false,todayBonuses=null,capturedHours=0;
+    if(useDelayed){
+      openExpH+=grossExpH;
+      if(accrualToPayout.has(ds))newLot={payout:accrualToPayout.get(ds),amount:new Float64Array(nSims),hours:openExpH};
+      releasing=[];
+      for(const lot of lots)if(lot.payout===ds)releasing.push(lot);
+      if(newLot&&newLot.payout===ds)releasing.push(newLot);
+      depositToday=releasing.length>0;
+      if(depositToday)payDayDates.push(ds);
+      captureNext=depositToday&&!nextSalary&&ds>=ref;
+      if(captureNext){todayBonuses=new Float64Array(nSims);capturedHours=releasing.reduce((s,l)=>s+l.hours,0)}
+    }
     const fcWi=dayToFcWeek[di];
     let runSum=0;
     for(let s=0;s<nSims;s++){
@@ -565,16 +666,22 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
       const work=hours*rate*(1-taxRate);
       const autoOut=autoRateBySim?autoRateBySim[s]/dim:0;
       if(useDelayed){
-        unpaid[s]+=work;
-        const bonus=payToday?unpaid[s]:0;
+        openPool[s]+=work;
+        if(newLot){newLot.amount[s]=openPool[s];openPool[s]=0}
+        let bonus=0;
+        for(const lot of releasing)bonus+=lot.amount[s];
         if(captureNext)todayBonuses[s]=bonus;
-        if(payToday)unpaid[s]=0;
         run[s]+=bonus+inEv-out-autoOut;
       }else{
         run[s]+=work+inEv-out-autoOut;
       }
       if(run[s]<minRun[s])minRun[s]=run[s];
       runSum+=run[s];
+    }
+    if(useDelayed){
+      if(releasing.length)for(let i=lots.length-1;i>=0;i--)if(releasing.indexOf(lots[i])>=0)lots.splice(i,1);
+      if(newLot&&newLot.payout!==ds)lots.push(newLot);
+      if(accrualToPayout.has(ds))openExpH=0;
     }
     if(useDelayed&&captureNext){
       const sb=Float64Array.from(todayBonuses).sort();
@@ -584,10 +691,9 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
         p10:sb[Math.floor(.1*nSims)],
         p90:sb[Math.floor(.9*nSims)],
         min:sb[0],max:sb[nSims-1],
-        expHours:unpaidExpH
+        expHours:capturedHours
       };
     }
-    if(payToday)unpaidExpH=0;
     /* Mean track is the EMPIRICAL mean of the simulation runs (was
        previously an analytical track that drifted from sim mean due to
        per-day vs per-week weighting in the bootstrap). */
@@ -665,7 +771,12 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   if(autoMeanRate)for(const ds of days)autoTotal+=autoMeanRate/daysInMonth(ds);
   te+=autoTotal;
   let ti=0;for(const v of incMap.values())ti+=v;
-  const unpaidMean=useDelayed?unpaid.reduce((a,c)=>a+c,0)/nSims:0;
+  let unpaidMean=0;
+  if(useDelayed){
+    let usum=0;
+    for(let s=0;s<nSims;s++){let u=openPool[s];for(const lot of lots)u+=lot.amount[s];usum+=u}
+    unpaidMean=usum/nSims;
+  }
   const totalExpectedWork=expectedWork.reduce((a,b)=>a+b,0);
   let minR=run[0],maxR=run[0],sumR=0,negCount=0,midNegCount=0;
   for(let i=0;i<nSims;i++){
@@ -694,7 +805,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     totalExpenses:te,totalAutoExpense:autoTotal,totalIncomes:ti,
     totalExpectedWork,calibrationShift:finalShift,taxRate,
     unpaidAtEnd:unpaidMean,initialUnpaid:init,initialUnpaidHours:initHours,
-    unpaidNow,unpaidNowHours,
+    unpaidNow,unpaidNowHours,pendingNow,
     prevSalary,nextSalary,
     targetReachProb,
     model:{pWork:[...wm.pWork],avgH:[...wm.avgH],expH:[...wm.expH],
@@ -738,7 +849,22 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   for(const inc of incs||[])if(inc.date>=firstDate&&inc.date<=anchorDate)
     incByDay.set(inc.date,(incByDay.get(inc.date)||0)+Number(inc.amount));
   const expMap=expandExpenses(exs||[],firstDate,anchorDate,{baseDate:refDate});
-  const known=d=>(earned.get(d)||0)+(incByDay.get(d)||0)-(expMap.get(d)||0);
+  /* With a pay schedule, income lands on PAYOUT days as steps (period earnings
+     deposited then), not spread daily — consistent with the forecast. Without a
+     schedule, fall back to daily earned. Endpoints stay pinned to checkpoints. */
+  const schedule=paySchedule(opts.payDays,opts.payoutDays);
+  const useDelayed=schedule.length>0;
+  let depositByDay=null;
+  if(useDelayed){
+    const events=effectivePayEvents(addDays(firstDate,-45),anchorDate,schedule,opts.payDayActuals);
+    const pr=payPeriodEarned(es,events,fallbackRate);
+    depositByDay=new Map();
+    for(const ev of events)if(ev.payout>=firstDate&&ev.payout<=anchorDate){
+      const pe=pr.get(ev.accrual);if(pe)depositByDay.set(ev.payout,(depositByDay.get(ev.payout)||0)+pe.gross*taxFactor);
+    }
+  }
+  const earnedOnDay=d=>useDelayed?(depositByDay.get(d)||0):(earned.get(d)||0);
+  const known=d=>earnedOnDay(d)+(incByDay.get(d)||0)-(expMap.get(d)||0);
   const balance=new Array(dates.length);
   balance[0]=used[0].balance;
   for(let k=0;k<used.length-1;k++){
@@ -779,28 +905,33 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   const taxRate=Math.max(0,Math.min(1,(opts.taxRate||0)/100));
   const fallbackRate=Number(opts.fallbackRate)||0;
   const refDate=opts.referenceDate||today();
-  const payDays=opts.payDays&&opts.payDays.length?opts.payDays:null;
   /* Actual dates only refine boundaries when a schedule exists — without one
      income is accrued daily and actuals are not used (matches the UI, which
      blocks marking actual dates until pay-day numbers are set). */
-  const payActuals=payDays&&opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
-  const useDelayed=!!payDays;
+  const schedule=paySchedule(opts.payDays,opts.payoutDays);
+  const useDelayed=schedule.length>0;
+  const payActuals=useDelayed&&opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
   const excluded=new Set((opts.excluded||[]).map(x=>x.from+'|'+x.to));
   const sorted=[...cps].filter(c=>(c.kind||'actual')==='actual')
     .sort((a,b)=>a.date<b.date?-1:1);
   if(sorted.length<2)return null;
+  /* Pay events over the checkpoint span. «Earned» in an interval (A,B] = sum of
+     period earnings whose DEPOSIT (payout) lands inside (A,B] — money that
+     actually hit the balance there (with payout==accrual reduces to the old
+     "work paid in window" boundary logic). */
+  const events=useDelayed?effectivePayEvents(addDays(sorted[0].date,-45),sorted[sorted.length-1].date,schedule,payActuals):[];
+  const periods=payPeriodEarned(es,events,fallbackRate);
+  const paidGross=(from,to)=>{let g=0;for(const ev of events)if(ev.payout>from&&ev.payout<=to){const pe=periods.get(ev.accrual);if(pe)g+=pe.gross}return g};
   const intervals=[],usedRates=[];
   let totalNetOut=0,totalImplicit=0,totalEarned=0,totalDays=0;
   for(let i=1;i<sorted.length;i++){
     const A=sorted[i-1],B=sorted[i];
     const dur=daysBetween(A.date,B.date);
     if(dur<=0)continue;
-    const earnFrom=useDelayed?(lastPayDayBefore(A.date,payDays,payActuals)||A.date):A.date;
-    const earnTo=useDelayed?(lastPayDayBefore(B.date,payDays,payActuals)||B.date):B.date;
     let earnedGross=0;
-    if(earnTo>earnFrom)for(const e of es||[])if(e.date>earnFrom&&e.date<=earnTo){
-      const r=e.rate>0?e.rate:fallbackRate;
-      earnedGross+=e.hours*r;
+    if(useDelayed)earnedGross=paidGross(A.date,B.date);
+    else for(const e of es||[])if(e.date>A.date&&e.date<=B.date){
+      const r=e.rate>0?e.rate:fallbackRate;earnedGross+=e.hours*r;
     }
     const earned=earnedGross*(1-taxRate);
     let inIn=0;

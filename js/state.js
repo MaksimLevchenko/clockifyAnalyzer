@@ -12,7 +12,27 @@ function migrate(s){
   s.entries=s.entries||[];
   s.expenses=s.expenses||[];
   s.incomes=s.incomes||[];
-  s.payDays=Array.isArray(s.payDays)?s.payDays.filter(d=>Number.isFinite(+d)).map(d=>Math.min(28,Math.max(1,+d))):[];
+  /* payDays = дни зп (отсечка часов); payoutDays — выровненный по индексу
+     массив дней выплаты (день прихода денег), null = совпадает с днём зп.
+     Нормализуем через пары: клампим 1–28, дедуп по дню зп, сортируем, макс 4. */
+  {
+    const pdRaw=Array.isArray(s.payDays)?s.payDays:[];
+    const poRaw=Array.isArray(s.payoutDays)?s.payoutDays:[];
+    const clamp=d=>Math.min(28,Math.max(1,+d));
+    const seen=new Set(),pairs=[];
+    for(let i=0;i<pdRaw.length;i++){
+      if(!Number.isFinite(+pdRaw[i]))continue;
+      const a=clamp(pdRaw[i]);
+      if(seen.has(a))continue;seen.add(a);
+      const pv=poRaw[i];
+      const p=(pv==null||pv==='')?null:(Number.isFinite(+pv)?clamp(pv):null);
+      pairs.push({accrual:a,payout:p});
+    }
+    pairs.sort((x,y)=>x.accrual-y.accrual);
+    const trimmed=pairs.slice(0,4);
+    s.payDays=trimmed.map(pr=>pr.accrual);
+    s.payoutDays=trimmed.map(pr=>pr.payout);
+  }
   s.payDayActuals=Array.isArray(s.payDayActuals)?[...new Set(s.payDayActuals.filter(d=>typeof d==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(d)))].sort():[];
   if(!Array.isArray(s.checkpoints)){
     s.checkpoints=(s.balance!=null&&s.balanceDate)

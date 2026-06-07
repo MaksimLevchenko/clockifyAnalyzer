@@ -313,7 +313,8 @@ function renderActualExpenses(){
   const card=document.getElementById('card-actual-expenses');
   if(!card)return;
   const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
-    excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,payDays:state.payDays,payDayActuals:state.payDayActuals
+    excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
+    payDays:state.payDays,payoutDays:state.payoutDays,payDayActuals:state.payDayActuals
   });
   if(!cf){card.style.display='none';return}
   card.style.display='';
@@ -404,33 +405,49 @@ function renderVacations(){
 }
 
 /* ========================= PAY DAYS ========================= */
+function afterPayDaysChange(){
+  renderActualExpenses();
+  if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+}
+
 document.getElementById('pd-add').addEventListener('click',()=>{
-  if(state.payDays.length>=4){toast('Максимум 4 дня выплаты');return}
+  if(state.payDays.length>=4){toast('Максимум 4 дня зарплаты');return}
   const last=state.payDays.length?state.payDays[state.payDays.length-1]:0;
   const next=state.payDays.length?Math.min(28,last+10):5;
   state.payDays.push(next);
-  saveState();renderPayDays();renderPayDayActuals();
+  if(!Array.isArray(state.payoutDays))state.payoutDays=[];
+  state.payoutDays.push(null);
+  saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
 });
 
 function renderPayDays(){
   const list=document.getElementById('pd-list');
-  const pds=state.payDays.slice().sort((a,b)=>a-b);
-  state.payDays=pds;
-  if(!pds.length){list.innerHTML='<small class="note">Не настроены — доход начисляется ежедневно (как раньше).</small>';}
+  if(!Array.isArray(state.payoutDays))state.payoutDays=[];
+  /* Keep payDays (день зп) and payoutDays (день выплаты) aligned & sorted by accrual. */
+  const pairs=state.payDays.map((a,i)=>({accrual:a,payout:state.payoutDays[i]==null?null:state.payoutDays[i]}))
+    .sort((x,y)=>x.accrual-y.accrual);
+  state.payDays=pairs.map(p=>p.accrual);
+  state.payoutDays=pairs.map(p=>p.payout);
+  if(!pairs.length){list.innerHTML='<small class="note">Не настроены — доход начисляется ежедневно (как раньше).</small>';}
   else{
-    list.innerHTML=pds.map((d,i)=>`<div class="field"><label>День ${i+1}</label><div style="display:flex;gap:6px;align-items:center"><input type="number" min="1" max="28" value="${d}" data-pdi="${i}" style="width:80px"><button class="btn terra sm" data-pddel="${i}">×</button></div></div>`).join('');
+    list.innerHTML=pairs.map((p,i)=>`<div class="field"><label>Зп ${i+1}: день зп → день выплаты</label><div style="display:flex;gap:6px;align-items:center"><input type="number" min="1" max="28" value="${p.accrual}" data-pdi="${i}" style="width:64px" title="День зп — отсечка часов"><span class="note">→</span><input type="number" min="1" max="28" value="${p.payout==null?'':p.payout}" placeholder="= ${p.accrual}" data-pdpi="${i}" style="width:64px" title="День выплаты — когда приходят деньги (пусто = день зп)"><button class="btn terra sm" data-pddel="${i}">×</button></div></div>`).join('');
     list.querySelectorAll('[data-pdi]').forEach(inp=>inp.addEventListener('change',()=>{
       const i=+inp.dataset.pdi;
-      const v=Math.max(1,Math.min(28,parseInt(inp.value)||1));
-      state.payDays[i]=v;
-      saveState();renderPayDays();
+      state.payDays[i]=Math.max(1,Math.min(28,parseInt(inp.value)||1));
+      saveState();renderPayDays();afterPayDaysChange();
+    }));
+    list.querySelectorAll('[data-pdpi]').forEach(inp=>inp.addEventListener('change',()=>{
+      const i=+inp.dataset.pdpi;const v=inp.value.trim();
+      state.payoutDays[i]=v===''?null:Math.max(1,Math.min(28,parseInt(v)||1));
+      saveState();renderPayDays();afterPayDaysChange();
     }));
     list.querySelectorAll('[data-pddel]').forEach(b=>b.addEventListener('click',()=>{
-      state.payDays.splice(+b.dataset.pddel,1);
-      saveState();renderPayDays();renderPayDayActuals();
+      const i=+b.dataset.pddel;
+      state.payDays.splice(i,1);state.payoutDays.splice(i,1);
+      saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
     }));
   }
-  document.getElementById('pd-add').disabled=pds.length>=4;
+  document.getElementById('pd-add').disabled=pairs.length>=4;
 }
 
 /* ----- actual pay dates (overrides for early/late salary) ----- */
@@ -606,7 +623,8 @@ function runForecast(auto){
   if(!state.checkpoints.length){if(!auto)toast('Добавь хотя бы один чекпоинт баланса');return}
   try{
     const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
-      excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,payDays:state.payDays
+      excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
+      payDays:state.payDays,payoutDays:state.payoutDays,payDayActuals:state.payDayActuals
     });
     const ae=autoExpenseEstimate(cf);
     const anchorEl=document.getElementById('fc-anchor');
@@ -615,6 +633,7 @@ function runForecast(auto){
       halfLife:state.halfLife,
       taxRate:state.taxRate,
       vacations:state.vacations,
+      payoutDays:state.payoutDays,
       payDayActuals:state.payDayActuals,
       anchorDate,
       autoMonthlyRates:ae?ae.sampleRates:null,
@@ -622,7 +641,8 @@ function runForecast(auto){
     });
     r.cashFlow=cf;r.autoEstimate=ae;
     r.past=reconstructPastBalance(state.entries,state.expenses,state.incomes,state.checkpoints,{
-      taxRate:state.taxRate,fallbackRate:state.rate,anchorDate:r.startDate
+      taxRate:state.taxRate,fallbackRate:state.rate,anchorDate:r.startDate,
+      payDays:state.payDays,payoutDays:state.payoutDays,payDayActuals:state.payDayActuals
     });
     lastFc=r;
     document.getElementById('card-fc-extras').style.display='';
@@ -700,10 +720,14 @@ function renderForecastSummary(r,end){
     if(r.prevSalary){
       const ps=r.prevSalary;
       po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmt(ps.money)} ${c}</div><div class="sub">${esc(dateRu(ps.date,true))} · после налога</div></div>`);
-      po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${(ps.hours||0).toFixed(1)} ч</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.date))}</div></div>`);
+      po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${(ps.hours||0).toFixed(1)} ч</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.periodTo||ps.date))}</div></div>`);
     }
-    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.unpaidNow||0)} ${c}</div><div class="sub">после налога · накоплено с прошлой выплаты</div></div>`);
+    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.unpaidNow||0)} ${c}</div><div class="sub">после налога · ещё не на карте</div></div>`);
     po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${(r.unpaidNowHours||0).toFixed(1)} ч</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
+    if(r.pendingNow&&r.pendingNow.money>0){
+      const pn=r.pendingNow;
+      po.push(`<div class="po"><div class="k">Начислено, ждёт выплаты</div><div class="v green">${fmt(pn.money)} ${c}</div><div class="sub">${(pn.hours||0).toFixed(1)} ч · придёт ${esc(dateRu(pn.nextPayout,true))}</div></div>`);
+    }
     if(r.nextSalary){
       const ns=r.nextSalary;
       po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>`);

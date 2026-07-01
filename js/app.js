@@ -8,18 +8,72 @@ function readFile(input,cb){
   r.readAsText(f);input.value='';
 }
 
-document.getElementById('file-import').addEventListener('change',function(){readFile(this,txt=>{
-  try{
-    const es=rowsToEntries(parseCSV(txt));
-    state.entries=es;state.rate=detectRate(es);
-    syncInputs();afterDataChange();
-    toast('Импортировано записей: '+es.length+' (старые заменены)');
-  }catch(e){toast('Ошибка импорта: '+e.message)}
-})});
+const PDFJS_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER_URL='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let pdfJsPromise=null;
 
-document.getElementById('file-merge').addEventListener('change',function(){readFile(this,txt=>{
+function loadPdfJs(){
+  if(window.pdfjsLib){
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER_URL;
+    return Promise.resolve(window.pdfjsLib);
+  }
+  if(pdfJsPromise)return pdfJsPromise;
+  pdfJsPromise=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=PDFJS_URL;s.async=true;
+    s.onload=()=>{
+      if(!window.pdfjsLib){reject(new Error('PDF.js не загрузился'));return}
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS_WORKER_URL;
+      resolve(window.pdfjsLib);
+    };
+    s.onerror=()=>{pdfJsPromise=null;reject(new Error('не удалось загрузить PDF.js для чтения PDF'))};
+    document.head.appendChild(s);
+  });
+  return pdfJsPromise;
+}
+
+function readBlob(file,kind){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result);
+    r.onerror=()=>reject(new Error('не удалось прочитать файл'));
+    if(kind==='arrayBuffer')r.readAsArrayBuffer(file);
+    else r.readAsText(file);
+  });
+}
+
+function isPdfFile(file){
+  const name=String(file.name||'').toLowerCase();
+  return file.type==='application/pdf'||name.endsWith('.pdf');
+}
+
+async function reportFileToEntries(file){
+  if(!isPdfFile(file))return rowsToEntries(parseCSV(await readBlob(file,'text')));
+  const pdfjs=await loadPdfJs();
+  const doc=await pdfjs.getDocument({data:new Uint8Array(await readBlob(file,'arrayBuffer'))}).promise;
+  const pages=[];
+  for(let p=1;p<=doc.numPages;p++){
+    const page=await doc.getPage(p);
+    const text=await page.getTextContent();
+    pages.push(text.items);
+  }
+  const es=clockifyPdfPagesToEntries(pages,{fallbackRate:state.rate});
+  if(!es.length)throw new Error('в PDF не найдены записи Clockify');
+  return es;
+}
+
+async function handleReportImport(input,mode){
+  const f=input.files[0];if(!f)return;
+  input.value='';
   try{
-    const es=rowsToEntries(parseCSV(txt));
+    const es=await reportFileToEntries(f);
+    if(mode==='replace'){
+      const oldRate=state.rate;
+      state.entries=es;state.rate=detectRate(es)||oldRate;
+      syncInputs();afterDataChange();
+      toast('Импортировано записей: '+es.length+' (старые заменены)');
+      return;
+    }
     const res=mergeEntries(state.entries,es);
     state.entries=res.entries;
     if(!state.rate)state.rate=detectRate(state.entries);
@@ -29,8 +83,11 @@ document.getElementById('file-merge').addEventListener('change',function(){readF
     msg+='. Всего: '+state.entries.length;
     if(res.missing)msg+='. Вне экспорта оставлено: '+res.missing;
     toast(msg);
-  }catch(e){toast('Ошибка догрузки: '+e.message)}
-})});
+  }catch(e){toast((mode==='replace'?'Ошибка импорта: ':'Ошибка догрузки: ')+e.message)}
+}
+
+document.getElementById('file-import').addEventListener('change',function(){handleReportImport(this,'replace')});
+document.getElementById('file-merge').addEventListener('change',function(){handleReportImport(this,'merge')});
 
 document.getElementById('btn-export').addEventListener('click',()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
@@ -78,7 +135,7 @@ function syncInputs(){
 function renderDataStats(){
   const box=document.getElementById('data-stats');const es=state.entries;
   if(!es.length){
-    box.innerHTML='<div class="empty"><div class="big">Нет данных</div>Импортируй отчёт Clockify (CSV), чтобы начать.</div>';
+    box.innerHTML='<div class="empty"><div class="big">Нет данных</div>Импортируй отчёт Clockify (CSV или PDF), чтобы начать.</div>';
     return;
   }
   const daily=dailyAgg(es);

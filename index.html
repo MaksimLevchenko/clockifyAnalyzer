@@ -28,10 +28,10 @@
   <section class="panel active" id="panel-data">
     <div class="card">
       <h2>Отчёты Clockify</h2>
-      <p class="hint">«Импорт» <b>заменяет</b> все записи. «Догрузить» <b>добавляет</b> только новые записи из отчёта — совпадающие (по времени, проекту, часам и ставке) пропускаются.</p>
+      <p class="hint">Поддерживаются CSV и PDF Detailed report. «Импорт» <b>заменяет</b> все записи. «Догрузить» <b>добавляет</b> только новые записи из отчёта — совпадающие (по времени, проекту, часам и ставке) пропускаются.</p>
       <div class="row">
-        <label class="btn filebtn">📥 Импорт (заменить)<input type="file" accept=".csv" id="file-import"></label>
-        <label class="btn green filebtn">➕ Догрузить (без дублей)<input type="file" accept=".csv" id="file-merge"></label>
+        <label class="btn filebtn">📥 Импорт (заменить)<input type="file" accept=".csv,.pdf,text/csv,application/pdf" id="file-import"></label>
+        <label class="btn green filebtn">➕ Догрузить (без дублей)<input type="file" accept=".csv,.pdf,text/csv,application/pdf" id="file-merge"></label>
       </div>
       <div class="divider"></div>
       <div class="stat-grid" id="data-stats"></div>

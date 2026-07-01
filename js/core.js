@@ -68,6 +68,98 @@ function rowsToEntries(rows){
   return out;
 }
 
+/* ----- PDF import ----- */
+function hmsToHours(s){
+  const m=String(s||'').trim().match(/^(\d+):([0-5]\d):([0-5]\d)$/);
+  if(!m)return NaN;
+  return Number(m[1])+Number(m[2])/60+Number(m[3])/3600;
+}
+
+function groupPdfTextRows(items){
+  const rows=new Map();
+  for(const it of items||[]){
+    const s=String((it&&it.str)||'').trim();
+    if(!s)continue;
+    const tr=it.transform||[];
+    const x=Number(tr[4]),y=Number(tr[5]);
+    if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+    const k=Math.round(y);
+    if(!rows.has(k))rows.set(k,{y:k,items:[]});
+    rows.get(k).items.push({x,s});
+  }
+  return[...rows.values()].map(r=>{
+    r.items.sort((a,b)=>a.x-b.x);
+    return r;
+  }).sort((a,b)=>b.y-a.y);
+}
+
+function clockifyPdfColumns(pages){
+  for(const page of pages||[]){
+    for(const row of groupPdfTextRows(page)){
+      const date=row.items.find(i=>i.s==='Date');
+      const desc=row.items.find(i=>i.s==='Description');
+      const dur=row.items.find(i=>i.s==='Duration');
+      const user=row.items.find(i=>i.s==='User');
+      if(date&&desc&&dur){
+        return{
+          dateEnd:(date.x+desc.x)/2,
+          descStart:(date.x+desc.x)/2,
+          descEnd:(desc.x+dur.x)/2,
+          durationStart:(desc.x+dur.x)/2,
+          durationEnd:user?(dur.x+user.x)/2:dur.x+130
+        };
+      }
+    }
+  }
+  return{dateEnd:90,descStart:90,descEnd:290,durationStart:290,durationEnd:420};
+}
+
+function pdfCellText(row,from,to){
+  if(!row)return'';
+  return row.items.filter(i=>i.x>=from&&i.x<to).map(i=>i.s).join(' ').trim();
+}
+
+function splitClockifyPdfDescription(line1,line2){
+  const parts=String(line2||'').split(' - ').map(x=>x.trim()).filter(Boolean);
+  if(parts.length>=2){
+    return{project:parts[0],description:[line1,parts.slice(1).join(' - ')].filter(Boolean).join(' · ')};
+  }
+  return{project:line2||'',description:line1||''};
+}
+
+function clockifyPdfPagesToEntries(pages,opts){
+  opts=opts||{};
+  const cols=clockifyPdfColumns(pages);
+  const dateRe=/^\d{2}\/\d{2}\/\d{4}$/;
+  const hmsRe=/^\d+:[0-5]\d:[0-5]\d$/;
+  const rangeRe=/^(\d{2}:[0-5]\d:[0-5]\d)\s*-\s*(\d{2}:[0-5]\d:[0-5]\d)$/;
+  const out=[];
+  const rate=Number(opts.fallbackRate)||0;
+  for(const page of pages||[]){
+    const rows=groupPdfTextRows(page);
+    for(let i=0;i<rows.length;i++){
+      const row=rows[i];
+      const dateText=row.items.find(x=>x.x<cols.dateEnd&&dateRe.test(x.s));
+      const durText=row.items.find(x=>x.x>=cols.durationStart&&x.x<cols.durationEnd&&hmsRe.test(x.s));
+      if(!dateText||!durText)continue;
+      const next=rows[i+1]&&row.y-rows[i+1].y<=22?rows[i+1]:null;
+      const range=next?pdfCellText(next,cols.durationStart,cols.durationEnd).match(rangeRe):null;
+      const p=dateText.s.split('/');
+      const date=p[2]+'-'+p[1]+'-'+p[0];
+      const time=range?range[1]:'00:00:00';
+      const hours=hmsToHours(durText.s);
+      if(!Number.isFinite(hours))continue;
+      const names=splitClockifyPdfDescription(
+        pdfCellText(row,cols.descStart,cols.descEnd),
+        pdfCellText(next,cols.descStart,cols.descEnd)
+      );
+      out.push({date,start:date+'T'+time,project:names.project,description:names.description,hours,rate});
+    }
+  }
+  out.sort(byStart);
+  return out;
+}
+
 function entryKey(e){return [e.start,e.project,Math.round(e.hours*1000)/1000,e.rate,e.description].join('|')}
 function byStart(a,b){return a.start<b.start?-1:a.start>b.start?1:0}
 

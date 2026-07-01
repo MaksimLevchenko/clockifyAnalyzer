@@ -729,6 +729,22 @@ function renderAnchorSelector(r){
     +actual.map(c=>`<option value="${esc(c.date)}"${c.date===prev?' selected':''}>${esc(dateRu(c.date,true))} · ${fmt(c.balance)} ${esc(cur())}</option>`).join('');
 }
 
+function fmtRoundedPair(value,digits){
+  const n=Number(value)||0;
+  const sign=n<0?'−':'';
+  const parts=Math.abs(n).toFixed(digits).split('.');
+  parts[0]=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+  return `${sign}${parts.join('.')} (${fmt(n)})`;
+}
+
+function fmtMoneyRounded(value,c){
+  return `${fmtRoundedPair(value,2)} ${c}`;
+}
+
+function fmtHoursRounded(value){
+  return `${fmtRoundedPair(value,2)} ч`;
+}
+
 function renderForecastSummary(r,end){
   const c=esc(cur());
   const days=r.days.length;
@@ -782,21 +798,21 @@ function renderForecastSummary(r,end){
     const po=[];
     if(r.prevSalary){
       const ps=r.prevSalary;
-      const taxSub=taxPct>0?` · налог работодателя ${fmt(ps.tax||0)} ${c}`:'';
-      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmt(ps.money)} ${c}</div><div class="sub">${esc(dateRu(ps.date,true))}${taxSub}</div></div>`);
-      po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${(ps.hours||0).toFixed(1)} ч</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.periodTo||ps.date))}</div></div>`);
+      const taxSub=taxPct>0?` · налог работодателя ${fmtMoneyRounded(ps.tax||0,c)}`:'';
+      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmtMoneyRounded(ps.money,c)}</div><div class="sub">${esc(dateRu(ps.date,true))}${taxSub}</div></div>`);
+      po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${fmtHoursRounded(ps.hours||0)}</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.periodTo||ps.date))}</div></div>`);
     }
-    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.unpaidNow||0)} ${c}</div><div class="sub">ещё не на карте</div></div>`);
-    po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${(r.unpaidNowHours||0).toFixed(1)} ч</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
+    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmtMoneyRounded(r.unpaidNow||0,c)}</div><div class="sub">ещё не на карте</div></div>`);
+    po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${fmtHoursRounded(r.unpaidNowHours||0)}</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
     if(r.pendingNow&&r.pendingNow.money>0){
       const pn=r.pendingNow;
-      po.push(`<div class="po"><div class="k">Начислено, ждёт выплаты</div><div class="v green">${fmt(pn.money)} ${c}</div><div class="sub">${(pn.hours||0).toFixed(1)} ч · придёт ${esc(dateRu(pn.nextPayout,true))}</div></div>`);
+      po.push(`<div class="po"><div class="k">Начислено, ждёт выплаты</div><div class="v green">${fmtMoneyRounded(pn.money,c)}</div><div class="sub">${fmtHoursRounded(pn.hours||0)} · придёт ${esc(dateRu(pn.nextPayout,true))}</div></div>`);
     }
     if(r.nextSalary){
       const ns=r.nextSalary;
-      const taxSub=taxPct>0?` · налог работодателя ≈${fmt(ns.taxMean||0)} ${c}`:'';
-      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}${taxSub}</div></div>`);
-      po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${(ns.expHours||0).toFixed(1)} ч</div><div class="sub">войдут в ближайшую выплату</div></div>`);
+      const taxSub=taxPct>0?` · налог работодателя ≈${fmtMoneyRounded(ns.taxMean||0,c)}`:'';
+      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmtMoneyRounded(ns.mean,c)}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmtMoneyRounded(ns.p10,c)}–${fmtMoneyRounded(ns.p90,c)}${taxSub}</div></div>`);
+      po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${fmtHoursRounded(ns.expHours||0)}</div><div class="sub">войдут в ближайшую выплату</div></div>`);
     }
     payout=`<div class="fc-payout">
       <div class="fc-payout-head">💵 Зарплата и невыплаченное</div>

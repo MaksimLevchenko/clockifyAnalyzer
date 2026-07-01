@@ -733,12 +733,24 @@ function roundedHours(value){
   return Math.ceil(Number(value)||0);
 }
 
-function fmtRoundedPair(value,digits,roundedValue){
+function fmtFixed(value,digits){
   const n=Number(value)||0;
   const sign=n<0?'−':'';
   const parts=Math.abs(n).toFixed(digits).split('.');
   parts[0]=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');
-  return `${sign}${parts.join('.')} (${fmt(roundedValue==null?roundedHours(n):roundedValue)})`;
+  return `${sign}${parts.join('.')}`;
+}
+
+function fmtOptionalCents(value){
+  const n=Number(value)||0;
+  return Math.abs(n-Math.round(n))<0.005?fmt(n):fmtFixed(n,2);
+}
+
+function fmtRoundedPair(value,digits,roundedValue,roundedWithCents){
+  const n=Number(value)||0;
+  const rounded=roundedValue==null?roundedHours(n):roundedValue;
+  const roundedText=roundedWithCents?fmtOptionalCents(rounded):fmt(rounded);
+  return `${fmtFixed(n,digits)} (${roundedText})`;
 }
 
 function moneyForRoundedHours(money,hours,fallbackRate){
@@ -755,7 +767,7 @@ function moneyForRoundedRate(money,rate){
 }
 
 function fmtMoneyRounded(value,c,roundedValue){
-  return `${fmtRoundedPair(value,2,roundedValue)} ${c}`;
+  return `${fmtRoundedPair(value,2,roundedValue,true)} ${c}`;
 }
 
 function fmtHoursRounded(value){
@@ -831,6 +843,11 @@ function renderForecastSummary(r,end){
       const roundedMoney=moneyForRoundedHours(ns.mean,ns.expHours,r.rate);
       const taxSub=taxPct>0?` · налог работодателя ≈${fmtMoneyRounded(ns.taxMean||0,c,roundedMoney*(r.taxRate||0))}`:'';
       po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmtMoneyRounded(ns.mean,c,roundedMoney)}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmtMoneyRounded(ns.p10,c,moneyForRoundedRate(ns.p10,r.rate))}–${fmtMoneyRounded(ns.p90,c,moneyForRoundedRate(ns.p90,r.rate))}${taxSub}</div></div>`);
+      if(taxPct>0){
+        const payoutTotal=(ns.mean||0)+(ns.taxMean||0);
+        const roundedTotal=roundedMoney*(1+(r.taxRate||0));
+        po.push(`<div class="po"><div class="k">Выплата</div><div class="v green">+${fmtMoneyRounded(payoutTotal,c,roundedTotal)}</div><div class="sub">ожид. зп + налог работодателя</div></div>`);
+      }
       po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${fmtHoursRounded(ns.expHours||0)}</div><div class="sub">войдут в ближайшую выплату</div></div>`);
     }
     payout=`<div class="fc-payout">

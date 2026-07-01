@@ -729,20 +729,37 @@ function renderAnchorSelector(r){
     +actual.map(c=>`<option value="${esc(c.date)}"${c.date===prev?' selected':''}>${esc(dateRu(c.date,true))} · ${fmt(c.balance)} ${esc(cur())}</option>`).join('');
 }
 
-function fmtRoundedPair(value,digits){
+function roundedHours(value){
+  return Math.ceil(Number(value)||0);
+}
+
+function fmtRoundedPair(value,digits,roundedValue){
   const n=Number(value)||0;
   const sign=n<0?'−':'';
   const parts=Math.abs(n).toFixed(digits).split('.');
   parts[0]=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');
-  return `${sign}${parts.join('.')} (${fmt(n)})`;
+  return `${sign}${parts.join('.')} (${fmt(roundedValue==null?roundedHours(n):roundedValue)})`;
 }
 
-function fmtMoneyRounded(value,c){
-  return `${fmtRoundedPair(value,2)} ${c}`;
+function moneyForRoundedHours(money,hours,fallbackRate){
+  const m=Number(money)||0;
+  const h=Number(hours)||0;
+  const rate=h>0?m/h:Number(fallbackRate)||0;
+  return rate>0?roundedHours(h||m/rate)*rate:roundedHours(m);
+}
+
+function moneyForRoundedRate(money,rate){
+  const m=Number(money)||0;
+  const r=Number(rate)||0;
+  return r>0?roundedHours(m/r)*r:roundedHours(m);
+}
+
+function fmtMoneyRounded(value,c,roundedValue){
+  return `${fmtRoundedPair(value,2,roundedValue)} ${c}`;
 }
 
 function fmtHoursRounded(value){
-  return `${fmtRoundedPair(value,2)} ч`;
+  return `${fmtRoundedPair(value,2,roundedHours(value))} ч`;
 }
 
 function renderForecastSummary(r,end){
@@ -798,20 +815,22 @@ function renderForecastSummary(r,end){
     const po=[];
     if(r.prevSalary){
       const ps=r.prevSalary;
-      const taxSub=taxPct>0?` · налог работодателя ${fmtMoneyRounded(ps.tax||0,c)}`:'';
-      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmtMoneyRounded(ps.money,c)}</div><div class="sub">${esc(dateRu(ps.date,true))}${taxSub}</div></div>`);
+      const roundedMoney=moneyForRoundedHours(ps.money,ps.hours,r.rate);
+      const taxSub=taxPct>0?` · налог работодателя ${fmtMoneyRounded(ps.tax||0,c,roundedMoney*(r.taxRate||0))}`:'';
+      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmtMoneyRounded(ps.money,c,roundedMoney)}</div><div class="sub">${esc(dateRu(ps.date,true))}${taxSub}</div></div>`);
       po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${fmtHoursRounded(ps.hours||0)}</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.periodTo||ps.date))}</div></div>`);
     }
-    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmtMoneyRounded(r.unpaidNow||0,c)}</div><div class="sub">ещё не на карте</div></div>`);
+    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmtMoneyRounded(r.unpaidNow||0,c,moneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate))}</div><div class="sub">ещё не на карте</div></div>`);
     po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${fmtHoursRounded(r.unpaidNowHours||0)}</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
     if(r.pendingNow&&r.pendingNow.money>0){
       const pn=r.pendingNow;
-      po.push(`<div class="po"><div class="k">Начислено, ждёт выплаты</div><div class="v green">${fmtMoneyRounded(pn.money,c)}</div><div class="sub">${fmtHoursRounded(pn.hours||0)} · придёт ${esc(dateRu(pn.nextPayout,true))}</div></div>`);
+      po.push(`<div class="po"><div class="k">Начислено, ждёт выплаты</div><div class="v green">${fmtMoneyRounded(pn.money,c,moneyForRoundedHours(pn.money,pn.hours,r.rate))}</div><div class="sub">${fmtHoursRounded(pn.hours||0)} · придёт ${esc(dateRu(pn.nextPayout,true))}</div></div>`);
     }
     if(r.nextSalary){
       const ns=r.nextSalary;
-      const taxSub=taxPct>0?` · налог работодателя ≈${fmtMoneyRounded(ns.taxMean||0,c)}`:'';
-      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmtMoneyRounded(ns.mean,c)}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmtMoneyRounded(ns.p10,c)}–${fmtMoneyRounded(ns.p90,c)}${taxSub}</div></div>`);
+      const roundedMoney=moneyForRoundedHours(ns.mean,ns.expHours,r.rate);
+      const taxSub=taxPct>0?` · налог работодателя ≈${fmtMoneyRounded(ns.taxMean||0,c,roundedMoney*(r.taxRate||0))}`:'';
+      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmtMoneyRounded(ns.mean,c,roundedMoney)}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmtMoneyRounded(ns.p10,c,moneyForRoundedRate(ns.p10,r.rate))}–${fmtMoneyRounded(ns.p90,c,moneyForRoundedRate(ns.p90,r.rate))}${taxSub}</div></div>`);
       po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${fmtHoursRounded(ns.expHours||0)}</div><div class="sub">войдут в ближайшую выплату</div></div>`);
     }
     payout=`<div class="fc-payout">

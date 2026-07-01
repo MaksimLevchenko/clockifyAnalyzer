@@ -485,6 +485,13 @@ function paySchedule(payDays){
   return out.slice(0,4);
 }
 
+function payEventHistoryStart(es,anchorDate){
+  const fallback=addDays(anchorDate,-45);
+  if(!es||!es.length)return fallback;
+  const firstEntry=addDays(es[0].date,-45);
+  return firstEntry<fallback?firstEntry:fallback;
+}
+
 /* Конкретные события выплат в окне. По умолчанию каждое событие месяца — это
    {accrual: день зп, payout: тот же день}. Фактические даты — пары
    {payout, accrual?} (приход денег + день учёта часов): подменяют ближайшее по
@@ -603,7 +610,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const tf=1-taxRate;
   /* Pay events around the anchor and across the horizon: each pairs an accrual
      day (день зп — hours cutoff) with a payout day (день выплаты — money lands). */
-  const events=useDelayed?effectivePayEvents(addDays(balanceDate,-45),end,schedule,opts.payDayActuals):[];
+  const events=useDelayed?effectivePayEvents(payEventHistoryStart(es,balanceDate),end,schedule,opts.payDayActuals):[];
   const accrualSorted=[...events].sort((a,b)=>a.accrual<b.accrual?-1:1);
   const periods=payPeriodEarned(es,events,rate); // accrualDate -> {gross,hours,prev,payout}
   /* accrual day -> payout day, only for accruals inside the forecast range —
@@ -967,7 +974,7 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   const useDelayed=schedule.length>0;
   let depositByDay=null;
   if(useDelayed){
-    const events=effectivePayEvents(addDays(firstDate,-45),anchorDate,schedule,opts.payDayActuals);
+    const events=effectivePayEvents(payEventHistoryStart(es,firstDate),anchorDate,schedule,opts.payDayActuals);
     const pr=payPeriodEarned(es,events,fallbackRate);
     depositByDay=new Map();
     for(const ev of events)if(ev.payout>=firstDate&&ev.payout<=anchorDate){
@@ -1030,7 +1037,7 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
      period earnings whose DEPOSIT (payout) lands inside (A,B] — money that
      actually hit the balance there (with payout==accrual reduces to the old
      "work paid in window" boundary logic). */
-  const events=useDelayed?effectivePayEvents(addDays(sorted[0].date,-45),sorted[sorted.length-1].date,schedule,payActuals):[];
+  const events=useDelayed?effectivePayEvents(payEventHistoryStart(es,sorted[0].date),sorted[sorted.length-1].date,schedule,payActuals):[];
   const periods=payPeriodEarned(es,events,fallbackRate);
   const paidGross=(from,to)=>{let g=0;for(const ev of events)if(ev.payout>from&&ev.payout<=to){const pe=periods.get(ev.accrual);if(pe)g+=pe.gross}return g};
   const intervals=[],usedRates=[];

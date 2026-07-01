@@ -114,8 +114,8 @@ canvas{display:block; cursor:crosshair}
 .empty{text-align:center; color:var(--muted); padding:30px}
 .empty .big{font-family:var(--serif); font-size:20px; color:var(--ink); margin-bottom:6px}
 
-#toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--paper2); padding:11px 20px; border-radius:30px; font-size:14px; opacity:0; pointer-events:none; transition:.3s; box-shadow:var(--shadow); z-index:50; max-width:90vw}
-#toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+#toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--paper2); padding:11px 20px; border-radius:30px; font-size:14px; opacity:0; pointer-events:none; transition:.3s; box-shadow:var(--shadow); z-index:50; max-width:90vw; max-height:55vh; overflow:auto; white-space:pre-wrap; text-align:left; line-height:1.45}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0); pointer-events:auto}
 .fc-summary{font-family:var(--mono); font-size:14px; line-height:1.6; margin-top:10px}
 .fc-summary .lbl{color:var(--muted)} .fc-summary b{font-weight:600}
 

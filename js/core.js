@@ -177,8 +177,8 @@ const MERGE_HOURS_TOLERANCE=2.5;
    группы entryGroupKey. Несопоставленные локальные записи не удаляются;
    попавшие в диапазон дат экспорта считаются в `missing` для предупреждения. */
 function mergeEntries(o,n){
-  if(!o||!o.length)return{entries:(n||[]).slice().sort(byStart),added:(n||[]).length,replaced:0,missing:0};
-  if(!n||!n.length)return{entries:o.slice().sort(byStart),added:0,replaced:0,missing:0};
+  if(!o||!o.length)return{entries:(n||[]).slice().sort(byStart),added:(n||[]).length,replaced:0,missing:0,missingEntries:[]};
+  if(!n||!n.length)return{entries:o.slice().sort(byStart),added:0,replaced:0,missing:0,missingEntries:[]};
   let lo=n[0].date,hi=n[0].date;
   for(const e of n){if(e.date<lo)lo=e.date;if(e.date>hi)hi=e.date}
   const gOld=new Map(),gNew=new Map();
@@ -186,7 +186,7 @@ function mergeEntries(o,n){
   for(const e of o)group(gOld,e);
   for(const e of n)group(gNew,e);
   const result=[],seen=new Set();
-  let added=0,replaced=0,missing=0;
+  let added=0,replaced=0,missing=0;const missingEntries=[];
   const keep=e=>{result.push(e);seen.add(entryKey(e))};
   for(const k of new Set([...gOld.keys(),...gNew.keys()])){
     const OLD=gOld.get(k)||[],NEW=gNew.get(k)||[];
@@ -210,10 +210,11 @@ function mergeEntries(o,n){
     /* 3) несопоставленные новые — добавляем (без точного дубля) */
     for(let j=0;j<NEW.length;j++)if(!nUsed[j]){if(seen.has(entryKey(NEW[j])))continue;keep(NEW[j]);added++}
     /* 4) несопоставленные старые — оставляем; попавшие в диапазон экспорта считаем */
-    for(let i=0;i<OLD.length;i++)if(!oUsed[i]){keep(OLD[i]);if(OLD[i].date>=lo&&OLD[i].date<=hi)missing++}
+    for(let i=0;i<OLD.length;i++)if(!oUsed[i]){keep(OLD[i]);if(OLD[i].date>=lo&&OLD[i].date<=hi){missing++;missingEntries.push(OLD[i])}}
   }
   result.sort(byStart);
-  return{entries:result,added,replaced,missing};
+  missingEntries.sort(byStart);
+  return{entries:result,added,replaced,missing,missingEntries};
 }
 
 function detectRate(es){const nz=es.filter(e=>e.rate>0);return nz.length?nz[nz.length-1].rate:0}
@@ -607,7 +608,6 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   for(const inc of incs||[])if(inc.date>=start&&inc.date<=end)incMap.set(inc.date,(incMap.get(inc.date)||0)+Number(inc.amount));
   const schedule=paySchedule(payDays);
   const useDelayed=schedule.length>0;
-  const tf=1-taxRate;
   /* Pay events around the anchor and across the horizon: each pairs an accrual
      day (день зп — hours cutoff) with a payout day (день выплаты — money lands). */
   const events=useDelayed?effectivePayEvents(payEventHistoryStart(es,balanceDate),end,schedule,opts.payDayActuals):[];
@@ -618,16 +618,16 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const accrualToPayout=new Map();
   for(const ev of events)if(ev.accrual>=start&&ev.accrual<=end)accrualToPayout.set(ev.accrual,ev.payout);
   /* Seed state at the anchor: open (not-yet-closed) period + lots already closed
-     but not yet deposited (payout after the anchor). Net-of-tax. */
+     but not yet deposited (payout after the anchor). */
   let openMoney=0,openHours=0;const seededLots=[];
   if(useDelayed){
     let lastAccrual=null;
     for(const ev of accrualSorted){if(ev.accrual<=balanceDate)lastAccrual=ev.accrual;else break}
     let og=0,oh=0;
     for(const e of es)if(e.date<=balanceDate&&(!lastAccrual||e.date>lastAccrual)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
-    openMoney=og*tf;openHours=oh;
+    openMoney=og;openHours=oh;
     for(const ev of events)if(ev.accrual<=balanceDate&&ev.payout>balanceDate){
-      const pe=periods.get(ev.accrual);if(pe)seededLots.push({payout:ev.payout,money:pe.gross*tf,hours:pe.hours});
+      const pe=periods.get(ev.accrual);if(pe)seededLots.push({payout:ev.payout,money:pe.gross,hours:pe.hours});
     }
   }
   /* initialUnpaid = всё начисленное до якоря, но ещё не на балансе (открытый
@@ -643,15 +643,15 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     for(const e of es)if(e.date<=ref&&(!lastAccrualRef||e.date>lastAccrualRef)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
     let pm=0,ph=0,nextPayout=null;
     for(const ev of events)if(ev.accrual<=ref&&ev.payout>ref){
-      const pe=periods.get(ev.accrual);if(pe){pm+=pe.gross*tf;ph+=pe.hours;if(!nextPayout||ev.payout<nextPayout)nextPayout=ev.payout}
+      const pe=periods.get(ev.accrual);if(pe){pm+=pe.gross;ph+=pe.hours;if(!nextPayout||ev.payout<nextPayout)nextPayout=ev.payout}
     }
-    unpaidNow=og*tf+pm;unpaidNowHours=oh+ph;
+    unpaidNow=og+pm;unpaidNowHours=oh+ph;
     if(pm>0)pendingNow={money:pm,hours:ph,nextPayout};
     let lastEv=null;
     for(const ev of events)if(ev.payout<=ref&&(!lastEv||ev.payout>lastEv.payout))lastEv=ev;
     if(lastEv){
       const pe=periods.get(lastEv.accrual);
-      if(pe)prevSalary={date:lastEv.payout,money:pe.gross*tf,hours:pe.hours,
+      if(pe)prevSalary={date:lastEv.payout,money:pe.gross,tax:pe.gross*taxRate,hours:pe.hours,
         periodFrom:pe.prev?addDays(pe.prev,1):(es.length?es[0].date:lastEv.accrual),periodTo:lastEv.accrual};
     }
   }
@@ -747,7 +747,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     const isVac=isVacationDay(ds,vacations);
     if(isVac)vacationDays.push(ds);
     const grossExpH=isVac?0:wm.expH[w];
-    expectedWork.push(grossExpH*rate*(1-taxRate));
+    expectedWork.push(grossExpH*rate);
     /* Auto-expense is normalized per CALENDAR month, matching the
        `daily` expense kind: amount/daysInMonth(ds) so monthly total
        stays constant across Feb (28) and Jan (31). */
@@ -781,7 +781,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
           hours=wm.pools[w][poolSamplers[w].sample(rand)];
         }
       }
-      const work=hours*rate*(1-taxRate);
+      const work=hours*rate;
       const autoOut=autoRateBySim?autoRateBySim[s]/dim:0;
       if(useDelayed){
         openPool[s]+=work;
@@ -803,12 +803,16 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     }
     if(useDelayed&&captureNext){
       const sb=Float64Array.from(todayBonuses).sort();
+      const taxSamples=Float64Array.from(todayBonuses,value=>value*taxRate).sort();
       nextSalary={
         date:ds,mean:sb.reduce((a,b)=>a+b,0)/nSims,
         median:sb[Math.floor(.5*nSims)],
         p10:sb[Math.floor(.1*nSims)],
         p90:sb[Math.floor(.9*nSims)],
         min:sb[0],max:sb[nSims-1],
+        taxMean:taxSamples.reduce((a,b)=>a+b,0)/nSims,
+        taxP10:taxSamples[Math.floor(.1*nSims)],
+        taxP90:taxSamples[Math.floor(.9*nSims)],
         expHours:capturedHours
       };
     }
@@ -948,7 +952,6 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   opts=opts||{};
   if(!opts.anchorDate)throw new Error('reconstructPastBalance: anchorDate is required');
   const anchorDate=opts.anchorDate;
-  const taxFactor=1-Math.max(0,Math.min(1,(opts.taxRate||0)/100));
   const fallbackRate=Number(opts.fallbackRate)||0;
   const refDate=opts.referenceDate||today();
   const used=[...(cps||[])].filter(c=>(c.kind||'actual')==='actual'&&c.date<=anchorDate)
@@ -961,7 +964,7 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   const earned=new Map();
   for(const e of es||[])if(e.date>=firstDate&&e.date<=anchorDate){
     const r=e.rate>0?e.rate:fallbackRate;
-    earned.set(e.date,(earned.get(e.date)||0)+e.hours*r*taxFactor);
+    earned.set(e.date,(earned.get(e.date)||0)+e.hours*r);
   }
   const incByDay=new Map();
   for(const inc of incs||[])if(inc.date>=firstDate&&inc.date<=anchorDate)
@@ -978,7 +981,7 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
     const pr=payPeriodEarned(es,events,fallbackRate);
     depositByDay=new Map();
     for(const ev of events)if(ev.payout>=firstDate&&ev.payout<=anchorDate){
-      const pe=pr.get(ev.accrual);if(pe)depositByDay.set(ev.payout,(depositByDay.get(ev.payout)||0)+pe.gross*taxFactor);
+      const pe=pr.get(ev.accrual);if(pe)depositByDay.set(ev.payout,(depositByDay.get(ev.payout)||0)+pe.gross);
     }
   }
   const earnedOnDay=d=>useDelayed?(depositByDay.get(d)||0):(earned.get(d)||0);
@@ -1005,10 +1008,8 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
    (median, robust mean, σ), чтобы один разовый интервал не перекосил оценку.
    opts.excluded — массив {from,to}: интервалы с такой парой пропускаются. */
 function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
-  /* opts.taxRate (% of gross) — if set, earned is netted before computing
-     netOut. The user's recorded balance reflects post-tax cash, so gross
-     earnings would otherwise inflate the "implicit" estimate by exactly
-     the tax amount.
+  /* opts.taxRate (% of gross) — employer-paid informational tax. It does not
+     reduce income in cash-flow estimates because it is not paid from balance.
      opts.fallbackRate — when an entry has rate=0 (e.g., Clockify CSV
      without billable rate configured), use this rate instead.
      opts.payDays — month-day numbers of salary deposits. When set,
@@ -1051,7 +1052,7 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
     else for(const e of es||[])if(e.date>A.date&&e.date<=B.date){
       const r=e.rate>0?e.rate:fallbackRate;earnedGross+=e.hours*r;
     }
-    const earned=earnedGross*(1-taxRate);
+    const earned=earnedGross;
     let inIn=0;
     for(const inc of incs||[])if(inc.date>A.date&&inc.date<=B.date)inIn+=Number(inc.amount);
     /* Use baseDate=refDate so growthRate scales DOWN for past dates —
@@ -1062,7 +1063,7 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
     const netOut=earned+inIn-delta;
     const implicit=netOut-exOut;
     const isExcluded=excluded.has(A.date+'|'+B.date);
-    const it={from:A.date,to:B.date,days:dur,earned,earnedGross,taxWithheld:earnedGross-earned,explicitIn:inIn,explicitOut:exOut,delta,netOut,implicitOut:implicit,excluded:isExcluded};
+    const it={from:A.date,to:B.date,days:dur,earned,earnedGross,employerTax:earnedGross*taxRate,explicitIn:inIn,explicitOut:exOut,delta,netOut,implicitOut:implicit,excluded:isExcluded};
     intervals.push(it);
     if(isExcluded)continue;
     totalNetOut+=netOut;totalImplicit+=implicit;totalEarned+=earned;totalDays+=dur;

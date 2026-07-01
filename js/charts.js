@@ -527,10 +527,6 @@ function drawFinalDist(r){
 function drawMonthlyForecast(r){
   if(!r||!r.perDay||r.days.length<30){showChart('ch-fc-monthly',false);return}
   showChart('ch-fc-monthly',true);
-  /* perDay.work is already net of tax (post taxRate). Apply the same
-     factor to historical income from state.entries so the chart is
-     internally consistent. */
-  const taxFactor=1-(r.taxRate||0);
   const byMonth=new Map();
   for(let i=0;i<r.days.length;i++){
     const k=r.days[i].slice(0,7);
@@ -547,7 +543,7 @@ function drawMonthlyForecast(r){
       const seenDates=new Set();
       for(const e of state.entries){
         if(e.date.slice(0,7)===k&&e.date<=r.startDate){
-          v.workAct+=e.hours*e.rate*taxFactor;seenDates.add(e.date);
+          v.workAct+=e.hours*e.rate;seenDates.add(e.date);
         }
       }
       v.daysAct=seenDates.size;

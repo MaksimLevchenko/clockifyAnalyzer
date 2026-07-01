@@ -2,11 +2,11 @@
 
 /* ----- toast ----- */
 let _toastT;
-function toast(msg){
+function toast(msg,timeoutMs){
   const t=document.getElementById('toast');
   t.textContent=msg;t.classList.add('show');
   clearTimeout(_toastT);
-  _toastT=setTimeout(()=>t.classList.remove('show'),3200);
+  _toastT=setTimeout(()=>t.classList.remove('show'),timeoutMs||3200);
 }
 
 /* ----- tabs (hash-based routing) ----- */

@@ -81,9 +81,19 @@ async function handleReportImport(input,mode){
     let msg='Догружено: +'+res.added+' новых';
     if(res.replaced)msg+=', заменено '+res.replaced+' (сдвиг времени)';
     msg+='. Всего: '+state.entries.length;
-    if(res.missing)msg+='. Вне экспорта оставлено: '+res.missing;
-    toast(msg);
+    if(res.missing){
+      msg+='. Вне экспорта оставлено: '+res.missing;
+      msg+='\nВне экспорта:\n'+(res.missingEntries||[]).map(formatMissingExportEntry).join('\n');
+    }
+    toast(msg,res.missing?20000:undefined);
   }catch(e){toast((mode==='replace'?'Ошибка импорта: ':'Ошибка догрузки: ')+e.message)}
+}
+
+function formatMissingExportEntry(e){
+  const time=(String(e.start||'').split('T')[1]||'').slice(0,5);
+  const title=[e.project,e.description].filter(Boolean).join(' · ')||'(без описания)';
+  const hours=Number(e.hours||0).toFixed(2);
+  return `- ${dateRu(e.date,true)}${time?' '+time:''}; ${hours} ч; ${title}; причина: нет в догружаемом файле`;
 }
 
 document.getElementById('file-import').addEventListener('change',function(){handleReportImport(this,'replace')});
@@ -394,7 +404,7 @@ function renderActualExpenses(){
   const cmp=manualMonthly>0
     ?` · введено вручную: <b>${fmt(manualMonthly)} ${c}/мес</b>`
     :``;
-  const taxNote=cf.taxRate?` · доход в расчёте net после ${(cf.taxRate*100).toFixed(0)}% налога`:'';
+  const taxNote=cf.taxRate?` · налог работодателя ${(cf.taxRate*100).toFixed(0)}% считается справочно`:'';
   const warn=weak
     ?`<div class="hint" style="color:#b1462c;margin-top:6px"><b>⚠ Слабый сигнал:</b> всего ${used} интервал(ов). Авто-оценка ненадёжна — добавь хотя бы 3 чекпоинта с разрывом в неделю-месяц, чтобы получить устойчивую статистику.</div>`
     :'';
@@ -742,8 +752,7 @@ function renderForecastSummary(r,end){
 
   const bd=[];
   bd.push(`<div class="bd-row"><span>Стартовый баланс на ${esc(dateRu(r.startDate,true))}</span><span><b>${fmt(r.startBalance)} ${c}</b></span></div>`);
-  const workLbl=taxPct>0?`+ Чистый доход от работы (после налога ${taxPct.toFixed(0)}%, за ${days} дн.)`:`+ Ожидаемый доход от работы (за ${days} дн.)`;
-  bd.push(`<div class="bd-row income"><span>${workLbl}</span><span>+${fmt(r.totalExpectedWork)} ${c}</span></div>`);
+  bd.push(`<div class="bd-row income"><span>+ Ожидаемый доход от работы (за ${days} дн.)</span><span>+${fmt(r.totalExpectedWork)} ${c}</span></div>`);
   if(useDelayed){
     if(r.initialUnpaid)bd.push(`<div class="bd-row note"><span>включая выплату долга с прошлого периода</span><span>+${fmt(r.initialUnpaid)} ${c}</span></div>`);
     if(r.unpaidAtEnd)bd.push(`<div class="bd-row note"><span>минус оставшийся непогашенный пул к концу</span><span>−${fmt(r.unpaidAtEnd)} ${c}</span></div>`);
@@ -773,10 +782,11 @@ function renderForecastSummary(r,end){
     const po=[];
     if(r.prevSalary){
       const ps=r.prevSalary;
-      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmt(ps.money)} ${c}</div><div class="sub">${esc(dateRu(ps.date,true))} · после налога</div></div>`);
+      const taxSub=taxPct>0?` · налог работодателя ${fmt(ps.tax||0)} ${c}`:'';
+      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmt(ps.money)} ${c}</div><div class="sub">${esc(dateRu(ps.date,true))}${taxSub}</div></div>`);
       po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${(ps.hours||0).toFixed(1)} ч</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.periodTo||ps.date))}</div></div>`);
     }
-    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.unpaidNow||0)} ${c}</div><div class="sub">после налога · ещё не на карте</div></div>`);
+    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmt(r.unpaidNow||0)} ${c}</div><div class="sub">ещё не на карте</div></div>`);
     po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${(r.unpaidNowHours||0).toFixed(1)} ч</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
     if(r.pendingNow&&r.pendingNow.money>0){
       const pn=r.pendingNow;
@@ -784,7 +794,8 @@ function renderForecastSummary(r,end){
     }
     if(r.nextSalary){
       const ns=r.nextSalary;
-      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}</div></div>`);
+      const taxSub=taxPct>0?` · налог работодателя ≈${fmt(ns.taxMean||0)} ${c}`:'';
+      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmt(ns.mean)} ${c}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmt(ns.p10)}–${fmt(ns.p90)}${taxSub}</div></div>`);
       po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${(ns.expHours||0).toFixed(1)} ч</div><div class="sub">войдут в ближайшую выплату</div></div>`);
     }
     payout=`<div class="fc-payout">
@@ -796,7 +807,7 @@ function renderForecastSummary(r,end){
   const metrics=[];
   metrics.push(`<div class="fc-metric"><div class="k">Прирост за период</div><div class="v" style="color:${growthClr}">${totalGrowth>=0?'+':''}${fmt(totalGrowth)}</div><div class="sub">${c}</div></div>`);
   metrics.push(`<div class="fc-metric"><div class="k">Интервал 80%</div><div class="v" style="font-size:14px">${fmt(r.finalP10)} — ${fmt(r.finalP90)}</div><div class="sub">${c}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Доход от работы / мес</div><div class="v green">${fmt(monthlyWork)}</div><div class="sub">${c}/мес${taxPct>0?` · после ${taxPct.toFixed(0)}% налога`:''}</div></div>`);
+  metrics.push(`<div class="fc-metric"><div class="k">Доход от работы / мес</div><div class="v green">${fmt(monthlyWork)}</div><div class="sub">${c}/мес${taxPct>0?` · налог справочно ${taxPct.toFixed(0)}%`:''}</div></div>`);
   if(monthlyExp)metrics.push(`<div class="fc-metric"><div class="k">Расходы / мес</div><div class="v terra">${fmt(monthlyExp)}</div><div class="sub">${c}/мес${monthlyManualExp&&monthlyAutoExp?` · ${fmt(monthlyManualExp)} введ. + ${fmt(monthlyAutoExp)} авто`:''}</div></div>`);
   metrics.push(`<div class="fc-metric"><div class="k">Нетто / мес</div><div class="v ${netClr}">${monthlyNet>=0?'+':''}${fmt(monthlyNet)}</div><div class="sub">${c}/мес</div></div>`);
   if(ae){
@@ -841,9 +852,9 @@ function renderModelTable(r){
     ?` · авто-расход по ${m.autoIntervalsUsed} интервалу(ам)`
     :'';
   document.getElementById('model-summary').innerHTML=
-    `<div>Параметры: T½ = <b>${m.halfLife}</b> дн. · налог = <b>${taxPct.toFixed(1)}%</b> · якорь = <b>${esc(dateRu(m.anchorDate,true))}</b> · ${bootInfo}${autoLine}</div>`+
+    `<div>Параметры: T½ = <b>${m.halfLife}</b> дн. · налог работодателя = <b>${taxPct.toFixed(1)}%</b> · якорь = <b>${esc(dateRu(m.anchorDate,true))}</b> · ${bootInfo}${autoLine}</div>`+
     `<div style="margin-top:4px">Ожидаемые часы за неделю: <b>${totalExp.toFixed(2)}</b> · `+
-    `ожидаемый доход (после налога): <b>${fmt(totalExp*r.rate*(1-(r.taxRate||0)))} ${c}/нед</b> · `+
+    `ожидаемый доход: <b>${fmt(totalExp*r.rate)} ${c}/нед</b> · `+
     `рабочих дней в истории: <b>${totalSamples}</b>${m.vacationDayCount?` · отпусков в горизонте: <b>${m.vacationDayCount}</b>`:''}</div>`;
   tb.innerHTML=WD.map((name,i)=>{
     const p=(m.pWork[i]*100).toFixed(0);

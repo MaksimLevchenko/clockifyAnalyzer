@@ -34,6 +34,11 @@ function forecastMoneyForRoundedRate(money,rate){
   return hourlyRate>0?forecastRoundedHours(amount/hourlyRate)*hourlyRate:forecastRoundedHours(amount);
 }
 
+function forecastMoneyForRoundedRateHours(hours,rate){
+  const hourlyRate=Number(rate)||0;
+  return hourlyRate>0?forecastRoundedHours(hours)*hourlyRate:0;
+}
+
 function forecastRoundedMoney(value,roundedValue,currency,sign){
   const number=Number(value)||0;
   const prefix=sign&&number>0?'+':'';
@@ -62,13 +67,19 @@ function renderForecastSummary(r,end){
   const runway=monthlyExpenses>0?r.startBalance/monthlyExpenses:Infinity;
   const nextSalary=r.nextSalary;
   const roundedSalary=nextSalary
-    ?forecastMoneyForRoundedHours(nextSalary.mean,nextSalary.expHours,r.rate)
+    ?forecastMoneyForRoundedRateHours(nextSalary.expHours,r.rate)
     :0;
   const salaryValue=nextSalary
     ?forecastRoundedMoney(nextSalary.mean,roundedSalary,currency,true)
     :'Нет в периоде';
+  const taxRate=Math.max(0,Number(r.taxRate)||0);
+  const salaryWithTax=nextSalary?nextSalary.mean*(1+taxRate):0;
+  const roundedSalaryWithTax=roundedSalary*(1+taxRate);
+  const salaryTax=nextSalary&&taxRate>0
+    ?`<span class="salary-tax">К выставлению с налогом: <b>${forecastRoundedMoney(salaryWithTax,roundedSalaryWithTax,currency)}</b></span>`
+    :'';
   const salarySub=nextSalary
-    ?`${esc(dateRu(nextSalary.date,true))} · коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}`
+    ?`${esc(dateRu(nextSalary.date,true))}${salaryTax}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
   const unpaidSub=r.unpaidNowHours
     ?`${fmt(r.unpaidNowHours)} ч уже отработано`

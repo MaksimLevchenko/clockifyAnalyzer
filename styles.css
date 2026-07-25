@@ -288,6 +288,8 @@ tbody tr:hover{background:var(--surface-soft)}
 .money-card .v.green{color:var(--green)}
 .money-card.balance .v{color:#fff}
 .money-card .sub{position:relative;z-index:1;margin-top:8px;color:var(--muted);font-size:11px;line-height:1.45}
+.money-card .sub>span{display:block;margin-top:3px}
+.money-card .salary-tax{color:var(--ink)}
 .scenario-panel{
   display:grid;
   grid-template-columns:minmax(180px,.7fr) repeat(3,minmax(0,1fr));

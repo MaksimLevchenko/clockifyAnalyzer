@@ -56,9 +56,13 @@ function drawForecast(id,r,startBal,keepView){
     return day>=fcView.leftDn-1&&day<=fcView.leftDn+fcView.windowDays+1;
   };
   const values=[];
-  for(let i=0;i<r.days.length;i++)if(inView(r.days[i]))values.push(r.p10[i],r.p90[i]);
-  if(past)for(let i=0;i<past.dates.length;i++)if(inView(past.dates[i]))values.push(past.balance[i]);
-  for(const cp of state.checkpoints)if(inView(cp.date)&&fcLayers.has(cp.kind==='target'?'target':'checkpoint'))values.push(Number(cp.balance)||0);
+  /* Horizontal panning must not rescale Y; use the complete accessible timeline. */
+  for(let i=0;i<r.days.length;i++)values.push(r.p10[i],r.p90[i]);
+  if(past)for(const balance of past.balance)values.push(balance);
+  for(const cp of state.checkpoints){
+    const layer=cp.kind==='target'?'target':'checkpoint';
+    if(cp.date>=leftLimit&&cp.date<=endDate&&fcLayers.has(layer))values.push(Number(cp.balance)||0);
+  }
   if(!values.length)values.push(startBal);
   let minValue=Math.min(...values),maxValue=Math.max(...values);
   const rawSpan=maxValue-minValue;

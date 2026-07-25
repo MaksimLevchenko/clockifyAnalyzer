@@ -370,33 +370,39 @@ function makeWeightedSampler(indices,weights){
   };
 }
 
+function expenseAmountOnDate(x,ds,baseDate){
+  const recurring=x.kind==='monthly'||x.kind==='daily';
+  let amount=Number(x.amount)||0;
+  if(x.kind==='monthly'&&Number(ds.slice(8,10))!==Number(x.day))return 0;
+  if(x.kind==='daily')amount/=daysInMonth(ds);
+  if(x.kind==='once'&&x.date!==ds)return 0;
+  const growth=recurring&&x.growthRate?Number(x.growthRate)/100:0;
+  if(growth&&baseDate)amount*=Math.pow(1+growth,daysBetween(baseDate,ds)/365.25);
+  return amount;
+}
+
+/* opts.baseDate — if set, recurring (monthly/daily) expense amounts are
+   scaled by (1+growthRate/100)^years between baseDate and each spend
+   date. Used in forecast to model inflation/indexation, and in cashflow
+   to recover the historical equivalent of today's entered values.
+   ONCE expenses are NOT scaled — they represent a concrete known
+   amount on a known date. */
 function expandExpenses(exs,s,e,opts){
-  /* opts.baseDate — if set, recurring (monthly/daily) expense amounts are
-     scaled by (1+growthRate/100)^years between baseDate and each spend
-     date. Used in forecast to model inflation/indexation, and in cashflow
-     to recover the historical equivalent of today's entered values.
-     ONCE expenses are NOT scaled — they represent a concrete known
-     amount on a known date. */
   opts=opts||{};
   const baseDate=opts.baseDate;
   const m=new Map();
   const range=dateRange(s,e);
   for(const ds of range)m.set(ds,0);
   for(const x of exs){
-    const isRecurring=x.kind==='monthly'||x.kind==='daily';
-    const g=isRecurring&&x.growthRate?Number(x.growthRate)/100:0;
-    const baseAmt=Number(x.amount);
-    const f=ds=>{
-      if(!g||!baseDate)return 1;
-      const yr=daysBetween(baseDate,ds)/365.25;
-      return Math.pow(1+g,yr);
-    };
     if(x.kind==='monthly'){
-      for(const ds of range)if(Number(ds.slice(8,10))===Number(x.day))m.set(ds,m.get(ds)+baseAmt*f(ds));
+      for(const ds of range){
+        const amount=expenseAmountOnDate(x,ds,baseDate);
+        if(amount)m.set(ds,m.get(ds)+amount);
+      }
     }else if(x.kind==='daily'){
-      for(const ds of range)m.set(ds,m.get(ds)+baseAmt*f(ds)/daysInMonth(ds));
+      for(const ds of range)m.set(ds,m.get(ds)+expenseAmountOnDate(x,ds,baseDate));
     }else{
-      if(x.date>=s&&x.date<=e)m.set(x.date,(m.get(x.date)||0)+baseAmt);
+      if(x.date>=s&&x.date<=e)m.set(x.date,(m.get(x.date)||0)+expenseAmountOnDate(x,x.date,baseDate));
     }
   }
   return m;

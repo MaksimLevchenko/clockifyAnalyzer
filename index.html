@@ -338,21 +338,45 @@
         <div class="field"><label title="С какого чекпоинта начинать. По умолчанию — последний фактический.">Якорь (старт)</label><select id="fc-anchor" style="min-width:200px"><option value="">Авто (последний фактический)</option></select></div>
         <button class="btn" id="fc-run">📈 Построить прогноз</button>
       </div>
-      <div class="chart-legend" style="margin-top:18px">
-        <span><i class="lg lg-line"></i>среднее</span>
-        <span><i class="lg lg-band"></i>интервал 80%</span>
-        <span><i class="lg lg-line lg-past"></i>реальный баланс (факт)</span>
-        <span><i class="lg lg-now"></i>сегодня</span>
-        <span><i class="lg lg-line lg-dash"></i>стартовый баланс</span>
-        <span><i class="lg lg-line lg-dash" style="background:var(--terra)"></i>ноль (порог разрыва)</span>
-        <span><i class="lg lg-dot lg-terra"></i>расход</span>
-        <span><i class="lg lg-dot lg-green-dot"></i>поступление</span>
-        <span><i class="lg lg-dot lg-gold"></i>чекпоинт (калибровка)</span>
-        <span><i class="lg lg-dot lg-terra"></i>цель (с пунктиром до прогноза)</span>
-        <span><i class="lg lg-tick"></i>день выплаты</span>
+      <div class="forecast-chart-shell" id="fc-chart-shell">
+        <div class="fc-chart-toolbar" aria-label="Управление периодом графика">
+          <div class="fc-range-controls">
+            <span class="fc-control-label">Период</span>
+            <button type="button" data-fc-range="31">1 мес.</button>
+            <button type="button" data-fc-range="92">3 мес.</button>
+            <button type="button" data-fc-range="183">6 мес.</button>
+            <button type="button" data-fc-range="365">1 год</button>
+            <button type="button" data-fc-range="all">Всё</button>
+          </div>
+          <div class="fc-zoom-controls">
+            <button type="button" data-fc-action="zoom-out" aria-label="Уменьшить масштаб">−</button>
+            <button type="button" data-fc-action="zoom-in" aria-label="Увеличить масштаб">+</button>
+            <button type="button" data-fc-action="today">Сегодня</button>
+          </div>
+        </div>
+        <div class="fc-view-meta">
+          <output id="fc-view-range" aria-live="polite">Период появится после расчёта</output>
+          <span>Колесо/щипок — масштаб · перетаскивание — период</span>
+        </div>
+        <div class="chart-legend fc-series-legend">
+          <span><i class="lg lg-line"></i>прогноз</span>
+          <span><i class="lg lg-band"></i>интервал 80%</span>
+          <span><i class="lg lg-line lg-past"></i>фактический баланс</span>
+          <span><i class="lg lg-now"></i>сегодня</span>
+          <span><i class="lg lg-line lg-dash" style="background:var(--terra)"></i>нулевой баланс</span>
+        </div>
+        <div class="fc-event-legend" role="group" aria-label="Слои событий">
+          <span class="fc-control-label">События</span>
+          <button type="button" data-fc-layer="expense" aria-pressed="true"><i class="event-swatch expense"></i>Расходы</button>
+          <button type="button" data-fc-layer="income" aria-pressed="true"><i class="event-swatch income"></i>Пополнения</button>
+          <button type="button" data-fc-layer="payout" aria-pressed="true"><i class="event-swatch payout"></i>Выплаты</button>
+          <button type="button" data-fc-layer="accrual" aria-pressed="true"><i class="event-swatch accrual"></i>Учёт часов</button>
+          <button type="button" data-fc-layer="checkpoint" aria-pressed="true"><i class="event-swatch checkpoint"></i>Чекпоинты</button>
+          <button type="button" data-fc-layer="target" aria-pressed="true"><i class="event-swatch target"></i>Цели</button>
+          <button type="button" data-fc-layer="vacation" aria-pressed="true"><i class="event-swatch vacation"></i>Нерабочие дни</button>
+        </div>
+        <div class="chartbox fc-chartbox"><canvas id="ch-fc" height="360" tabindex="0" aria-label="Интерактивный график прогноза накоплений"></canvas></div>
       </div>
-      <p class="hint" style="margin:6px 0 0">↔ Перетаскивай график мышью или пальцем, чтобы листать прошлое: слева от «сегодня» — реальный баланс, справа — прогноз.</p>
-      <div class="chartbox" style="margin-top:6px"><canvas id="ch-fc" height="280"></canvas></div>
       <div class="fc-summary" id="fc-summary"></div>
     </div>
 
@@ -453,6 +477,9 @@
 <script src="js/state.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/charts.js"></script>
+<script src="js/forecast-chart-events.js"></script>
+<script src="js/forecast-chart-controls.js"></script>
+<script src="js/forecast-chart.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/app.js"></script>
 </body>

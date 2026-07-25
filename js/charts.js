@@ -143,7 +143,9 @@ function drawLine(id,labels,vals,tips){
 
 function drawBalanceChart(){
   const card=document.getElementById('card-balance');if(!card)return;
-  const cps=[...state.checkpoints].sort((a,b)=>a.date<b.date?-1:1);
+  const cps=state.checkpoints
+    .filter(cp=>(cp.kind||'actual')==='actual')
+    .sort((a,b)=>a.date<b.date?-1:1);
   if(cps.length<2){card.style.display='none';return}
   card.style.display='';
   const c=esc(cur());

@@ -4,6 +4,42 @@ function forecastMoney(value,currency,sign){
   return `${prefix}${fmt(number)} ${currency}`;
 }
 
+function forecastFixed(value,digits){
+  const number=Number(value)||0;
+  const sign=number<0?'−':'';
+  const parts=Math.abs(number).toFixed(digits).split('.');
+  parts[0]=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');
+  return `${sign}${parts.join('.')}`;
+}
+
+function forecastOptionalCents(value){
+  const number=Number(value)||0;
+  return Math.abs(number-Math.round(number))<.005?fmt(number):forecastFixed(number,2);
+}
+
+function forecastRoundedHours(value){
+  return Math.ceil(Number(value)||0);
+}
+
+function forecastMoneyForRoundedHours(money,hours,fallbackRate){
+  const amount=Number(money)||0;
+  const worked=Number(hours)||0;
+  const rate=worked>0?amount/worked:Number(fallbackRate)||0;
+  return rate>0?forecastRoundedHours(worked||amount/rate)*rate:forecastRoundedHours(amount);
+}
+
+function forecastMoneyForRoundedRate(money,rate){
+  const amount=Number(money)||0;
+  const hourlyRate=Number(rate)||0;
+  return hourlyRate>0?forecastRoundedHours(amount/hourlyRate)*hourlyRate:forecastRoundedHours(amount);
+}
+
+function forecastRoundedMoney(value,roundedValue,currency,sign){
+  const number=Number(value)||0;
+  const prefix=sign&&number>0?'+':'';
+  return `${prefix}${forecastFixed(number,2)} (${forecastOptionalCents(roundedValue)}) ${currency}`;
+}
+
 function forecastDetail(label,value,extraClass){
   return `<div class="detail-metric${extraClass?` ${extraClass}`:''}">
     <div class="k">${label}</div>
@@ -25,15 +61,19 @@ function renderForecastSummary(r,end){
   const monthlyNet=monthlyWork+monthlyIncomes-monthlyExpenses;
   const runway=monthlyExpenses>0?r.startBalance/monthlyExpenses:Infinity;
   const nextSalary=r.nextSalary;
+  const roundedSalary=nextSalary
+    ?forecastMoneyForRoundedHours(nextSalary.mean,nextSalary.expHours,r.rate)
+    :0;
   const salaryValue=nextSalary
-    ?forecastMoney(nextSalary.mean,currency,true)
+    ?forecastRoundedMoney(nextSalary.mean,roundedSalary,currency,true)
     :'Нет в периоде';
   const salarySub=nextSalary
-    ?`${esc(dateRu(nextSalary.date,true))} · коридор ${forecastMoney(nextSalary.p10,currency)}–${forecastMoney(nextSalary.p90,currency)}`
+    ?`${esc(dateRu(nextSalary.date,true))} · коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}`
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
   const unpaidSub=r.unpaidNowHours
     ?`${fmt(r.unpaidNowHours)} ч уже отработано`
     :'Нет неоплаченных часов';
+  const roundedUnpaid=forecastMoneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate);
   const scenarioDate=esc(dateRu(end,true));
 
   const details=[];
@@ -80,12 +120,12 @@ function renderForecastSummary(r,end){
       </article>
       <article class="money-card">
         <div class="k">Ближайшая зарплата</div>
-        <div class="v green">${salaryValue}</div>
+        <div class="v green precise">${salaryValue}</div>
         <div class="sub">${salarySub}</div>
       </article>
       <article class="money-card">
         <div class="k">Заработано, но не выплачено</div>
-        <div class="v green">${forecastMoney(r.unpaidNow||0,currency)}</div>
+        <div class="v green precise">${forecastRoundedMoney(r.unpaidNow||0,roundedUnpaid,currency)}</div>
         <div class="sub">${unpaidSub}</div>
       </article>
     </div>

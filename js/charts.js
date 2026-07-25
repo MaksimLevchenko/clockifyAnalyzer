@@ -163,6 +163,8 @@ function drawBalanceChart(){
 
 function showChart(id,show){
   const c=document.getElementById(id);if(!c)return;
+  const card=c.closest('.chart-card');
+  if(card){card.style.display=show?'':'none';return}
   const box=c.closest('.chartbox');if(box)box.style.display=show?'':'none';
 }
 

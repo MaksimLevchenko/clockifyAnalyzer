@@ -588,9 +588,9 @@ function renderCheckpoints(){
       :'<span class="pill">прошлое</span>';
     const id=esc(cp.date);
     const balVal=Number(cp.balance)||0;
-    const dateInp=`<input type="date" value="${id}" data-cpdate="${id}" style="font-size:12px;padding:2px 4px">`;
-    const balInp=`<input type="number" step="0.01" value="${balVal}" data-cpbal="${id}" style="width:110px;text-align:right">`;
-    const kindOpt=`<select class="cp-kind-sel" data-cpkind="${id}" style="font-size:11px;padding:2px 4px"><option value="actual"${k==='actual'?' selected':''}>факт</option><option value="target"${k==='target'?' selected':''}>цель</option></select>`;
+    const dateInp=`<input type="date" aria-label="Дата записи баланса" value="${id}" data-cpdate="${id}" style="font-size:12px;padding:2px 4px">`;
+    const balInp=`<input type="number" aria-label="Сумма баланса" step="0.01" value="${balVal}" data-cpbal="${id}" style="width:110px;text-align:right">`;
+    const kindOpt=`<select aria-label="Тип записи баланса" class="cp-kind-sel" data-cpkind="${id}" style="font-size:11px;padding:2px 4px"><option value="actual"${k==='actual'?' selected':''}>факт</option><option value="target"${k==='target'?' selected':''}>цель</option></select>`;
     return `<tr>
       <td>${dateInp} ${pill}</td>
       <td class="num">${balInp} ${c}</td>
@@ -681,11 +681,30 @@ function renderIncomes(){
 }
 
 /* ========================= FORECAST TAB ========================= */
+function renderForecastUnavailable(message){
+  document.getElementById('fc-summary').innerHTML=`<div class="forecast-empty">
+    <span class="empty-orbit" aria-hidden="true"></span>
+    <div><strong>Прогноз ждёт данных</strong><p>${esc(message)}</p></div>
+  </div>`;
+  document.getElementById('fc-chart-shell').classList.add('is-empty');
+  document.getElementById('card-fc-extras').style.display='none';
+  document.getElementById('card-fc-model').style.display='none';
+  lastFc=null;
+}
+
 function runForecast(auto){
   const end=document.getElementById('fc-end').value;
   if(!end){if(!auto)toast('Укажи дату прогноза');return}
-  if(!state.entries.length){if(!auto)toast('Сначала импортируй данные');return}
-  if(!state.checkpoints.length){if(!auto)toast('Добавь хотя бы один чекпоинт баланса');return}
+  if(!state.entries.length){
+    renderForecastUnavailable('Импортируй отчёт о работе, чтобы рассчитать будущий доход.');
+    if(!auto)toast('Сначала импортируй данные');
+    return;
+  }
+  if(!state.checkpoints.length){
+    renderForecastUnavailable('Добавь фактический баланс — он станет точкой старта прогноза.');
+    if(!auto)toast('Добавь хотя бы один чекпоинт баланса');
+    return;
+  }
   try{
     const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
       excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
@@ -709,6 +728,7 @@ function runForecast(auto){
       payDays:state.payDays,payDayActuals:state.payDayActuals
     });
     lastFc=r;
+    document.getElementById('fc-chart-shell').classList.remove('is-empty');
     document.getElementById('card-fc-extras').style.display='';
     document.getElementById('card-fc-model').style.display='';
     drawForecast('ch-fc',r,r.startBalance);
@@ -727,168 +747,6 @@ function renderAnchorSelector(r){
   const prev=sel.value;
   sel.innerHTML='<option value="">Авто (последний фактический)</option>'
     +actual.map(c=>`<option value="${esc(c.date)}"${c.date===prev?' selected':''}>${esc(dateRu(c.date,true))} · ${fmt(c.balance)} ${esc(cur())}</option>`).join('');
-}
-
-function roundedHours(value){
-  return Math.ceil(Number(value)||0);
-}
-
-function fmtFixed(value,digits){
-  const n=Number(value)||0;
-  const sign=n<0?'−':'';
-  const parts=Math.abs(n).toFixed(digits).split('.');
-  parts[0]=parts[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ');
-  return `${sign}${parts.join('.')}`;
-}
-
-function fmtOptionalCents(value){
-  const n=Number(value)||0;
-  return Math.abs(n-Math.round(n))<0.005?fmt(n):fmtFixed(n,2);
-}
-
-function fmtRoundedPair(value,digits,roundedValue,roundedWithCents){
-  const n=Number(value)||0;
-  const rounded=roundedValue==null?roundedHours(n):roundedValue;
-  const roundedText=roundedWithCents?fmtOptionalCents(rounded):fmt(rounded);
-  return `${fmtFixed(n,digits)} (${roundedText})`;
-}
-
-function moneyForRoundedHours(money,hours,fallbackRate){
-  const m=Number(money)||0;
-  const h=Number(hours)||0;
-  const rate=h>0?m/h:Number(fallbackRate)||0;
-  return rate>0?roundedHours(h||m/rate)*rate:roundedHours(m);
-}
-
-function moneyForRoundedRate(money,rate){
-  const m=Number(money)||0;
-  const r=Number(rate)||0;
-  return r>0?roundedHours(m/r)*r:roundedHours(m);
-}
-
-function fmtMoneyRounded(value,c,roundedValue){
-  return `${fmtRoundedPair(value,2,roundedValue,true)} ${c}`;
-}
-
-function fmtHoursRounded(value){
-  return `${fmtRoundedPair(value,2,roundedHours(value))} ч`;
-}
-
-function renderForecastSummary(r,end){
-  const c=esc(cur());
-  const days=r.days.length;
-  const monthF=days>0?30.44/days:0;
-  const autoTotal=r.totalAutoExpense||0;
-  const manualExpenses=Math.max(0,r.totalExpenses-autoTotal);
-  const monthlyWork=r.totalExpectedWork*monthF;
-  const monthlyExp=r.totalExpenses*monthF;
-  const monthlyManualExp=manualExpenses*monthF;
-  const monthlyAutoExp=autoTotal*monthF;
-  const monthlyInc=r.totalIncomes*monthF;
-  const monthlyNet=monthlyWork+monthlyInc-monthlyExp;
-  const runway=monthlyExp>0?r.startBalance/monthlyExp:Infinity;
-  const breakeven=Math.max(0,monthlyExp-monthlyInc);
-  const useDelayed=r.payDayDates.length>0;
-  const totalGrowth=r.finalMean-r.startBalance;
-  const growthClr=totalGrowth>=0?COL.green:COL.terra;
-  const netClr=monthlyNet>=0?'green':'terra';
-  const ae=r.autoEstimate;
-  const taxPct=(r.taxRate||0)*100;
-
-  const bd=[];
-  bd.push(`<div class="bd-row"><span>Стартовый баланс на ${esc(dateRu(r.startDate,true))}</span><span><b>${fmt(r.startBalance)} ${c}</b></span></div>`);
-  bd.push(`<div class="bd-row income"><span>+ Ожидаемый доход от работы (за ${days} дн.)</span><span>+${fmt(r.totalExpectedWork)} ${c}</span></div>`);
-  if(useDelayed){
-    if(r.initialUnpaid)bd.push(`<div class="bd-row note"><span>включая выплату долга с прошлого периода</span><span>+${fmt(r.initialUnpaid)} ${c}</span></div>`);
-    if(r.unpaidAtEnd)bd.push(`<div class="bd-row note"><span>минус оставшийся непогашенный пул к концу</span><span>−${fmt(r.unpaidAtEnd)} ${c}</span></div>`);
-  }
-  if(r.totalIncomes)bd.push(`<div class="bd-row income"><span>+ Разовые поступления</span><span>+${fmt(r.totalIncomes)} ${c}</span></div>`);
-  if(manualExpenses)bd.push(`<div class="bd-row expense"><span>− Введённые расходы</span><span>−${fmt(manualExpenses)} ${c}</span></div>`);
-  if(autoTotal){
-    const sourceLbl=ae&&ae.source==='recent90'?'последние 90 дн.':ae&&ae.source==='robust'?'устойчивая оценка':'среднее';
-    bd.push(`<div class="bd-row expense"><span>− Авто-расходы по чекпоинтам <small class="note">(≈${fmt(monthlyAutoExp)} ${c}/мес · ${sourceLbl})</small></span><span>−${fmt(autoTotal)} ${c}</span></div>`);
-  }
-  if(r.model.vacationDayCount)bd.push(`<div class="bd-row note"><span>учтено отпускных/нерабочих дней в горизонте</span><span>${r.model.vacationDayCount}</span></div>`);
-  if(r.calibrationShift){
-    bd.push(`<div class="bd-row calib"><span>~ Сдвиг калибровки по чекпоинтам</span><span>${r.calibrationShift>=0?'+':''}${fmt(r.calibrationShift)} ${c}</span></div>`);
-    if(r.model.calibrationExtraWidth)bd.push(`<div class="bd-row note"><span>добавочная неопределённость после калибровки (±${fmt(r.model.calibrationExtraWidth)})</span><span class="note">модель промахнулась — полоса и распределение расширены</span></div>`);
-  }
-  bd.push(`<div class="bd-row total"><span>= Ожидаемый баланс на ${esc(dateRu(end,true))}</span><span><b style="color:${growthClr}">${fmt(r.finalMean)} ${c}</b></span></div>`);
-  if(r.targetReachProb&&r.targetReachProb.length){
-    bd.push(`<div class="bd-row" style="margin-top:8px;border-top:1px solid var(--line2);padding-top:6px"><b>Достижимость целей:</b><span></span></div>`);
-    for(const t of r.targetReachProb){
-      const pClr=t.prob>=0.7?'green':t.prob>=0.3?'gold':'terra';
-      bd.push(`<div class="bd-row"><span>◇ ${fmt(t.balance)} ${c} к ${esc(dateRu(t.date,true))}</span><span><b style="color:${COL[pClr]}">${(t.prob*100).toFixed(0)}%</b></span></div>`);
-    }
-  }
-
-  let payout='';
-  if(r.nextSalary||r.prevSalary){
-    const po=[];
-    if(r.prevSalary){
-      const ps=r.prevSalary;
-      const roundedMoney=moneyForRoundedHours(ps.money,ps.hours,r.rate);
-      const taxSub=taxPct>0?` · налог работодателя ${fmtMoneyRounded(ps.tax||0,c,roundedMoney*(r.taxRate||0))}`:'';
-      po.push(`<div class="po"><div class="k">Предыдущая зарплата</div><div class="v green">${fmtMoneyRounded(ps.money,c,roundedMoney)}</div><div class="sub">${esc(dateRu(ps.date,true))}${taxSub}</div></div>`);
-      po.push(`<div class="po"><div class="k">Часы в прошлой выплате</div><div class="v">${fmtHoursRounded(ps.hours||0)}</div><div class="sub">за ${esc(dateRu(ps.periodFrom))} – ${esc(dateRu(ps.periodTo||ps.date))}</div></div>`);
-    }
-    po.push(`<div class="po"><div class="k">Заработано и не выплачено сейчас</div><div class="v green">${fmtMoneyRounded(r.unpaidNow||0,c,moneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate))}</div><div class="sub">ещё не на карте</div></div>`);
-    po.push(`<div class="po"><div class="k">Часов невыплачено сейчас</div><div class="v">${fmtHoursRounded(r.unpaidNowHours||0)}</div><div class="sub">отработано, но ещё не оплачено</div></div>`);
-    if(r.pendingNow&&r.pendingNow.money>0){
-      const pn=r.pendingNow;
-      po.push(`<div class="po"><div class="k">Начислено, ждёт выплаты</div><div class="v green">${fmtMoneyRounded(pn.money,c,moneyForRoundedHours(pn.money,pn.hours,r.rate))}</div><div class="sub">${fmtHoursRounded(pn.hours||0)} · придёт ${esc(dateRu(pn.nextPayout,true))}</div></div>`);
-    }
-    if(r.nextSalary){
-      const ns=r.nextSalary;
-      const roundedMoney=moneyForRoundedHours(ns.mean,ns.expHours,r.rate);
-      const taxSub=taxPct>0?` · налог работодателя ≈${fmtMoneyRounded(ns.taxMean||0,c,roundedMoney*(r.taxRate||0))}`:'';
-      po.push(`<div class="po"><div class="k">Ожидаемая зарплата</div><div class="v green">+${fmtMoneyRounded(ns.mean,c,roundedMoney)}</div><div class="sub">${esc(dateRu(ns.date,true))} · 80%: ${fmtMoneyRounded(ns.p10,c,moneyForRoundedRate(ns.p10,r.rate))}–${fmtMoneyRounded(ns.p90,c,moneyForRoundedRate(ns.p90,r.rate))}${taxSub}</div></div>`);
-      if(taxPct>0){
-        const payoutTotal=(ns.mean||0)+(ns.taxMean||0);
-        const roundedTotal=roundedMoney*(1+(r.taxRate||0));
-        po.push(`<div class="po"><div class="k">Выплата</div><div class="v green">+${fmtMoneyRounded(payoutTotal,c,roundedTotal)}</div><div class="sub">ожид. зп + налог работодателя</div></div>`);
-      }
-      po.push(`<div class="po"><div class="k">Ожидаемые часы</div><div class="v">${fmtHoursRounded(ns.expHours||0)}</div><div class="sub">войдут в ближайшую выплату</div></div>`);
-    }
-    payout=`<div class="fc-payout">
-      <div class="fc-payout-head">💵 Зарплата и невыплаченное</div>
-      <div class="fc-payout-grid">${po.join('')}</div>
-    </div>`;
-  }
-
-  const metrics=[];
-  metrics.push(`<div class="fc-metric"><div class="k">Прирост за период</div><div class="v" style="color:${growthClr}">${totalGrowth>=0?'+':''}${fmt(totalGrowth)}</div><div class="sub">${c}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Интервал 80%</div><div class="v" style="font-size:14px">${fmt(r.finalP10)} — ${fmt(r.finalP90)}</div><div class="sub">${c}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Доход от работы / мес</div><div class="v green">${fmt(monthlyWork)}</div><div class="sub">${c}/мес${taxPct>0?` · налог справочно ${taxPct.toFixed(0)}%`:''}</div></div>`);
-  if(monthlyExp)metrics.push(`<div class="fc-metric"><div class="k">Расходы / мес</div><div class="v terra">${fmt(monthlyExp)}</div><div class="sub">${c}/мес${monthlyManualExp&&monthlyAutoExp?` · ${fmt(monthlyManualExp)} введ. + ${fmt(monthlyAutoExp)} авто`:''}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Нетто / мес</div><div class="v ${netClr}">${monthlyNet>=0?'+':''}${fmt(monthlyNet)}</div><div class="sub">${c}/мес</div></div>`);
-  if(ae){
-    const srcLbl=ae.source==='recent90'?'последние 90 дн.':ae.source==='robust'?'устойчивая (винзоризация)':'среднее по чекп.';
-    const weak=ae.intervalsUsed<3?' <span style="color:#b1462c">⚠ слабый сигнал</span>':'';
-    metrics.push(`<div class="fc-metric"><div class="k">Авто-расход / мес</div><div class="v gold">${fmt(ae.value)}</div><div class="sub">${c}/мес · ±${fmt(ae.sigma)} (σ) · ${srcLbl}${weak}</div></div>`);
-    if(r.cashFlow&&r.cashFlow.intervalsUsed){
-      metrics.push(`<div class="fc-metric"><div class="k">Факт. отток (все) / мес</div><div class="v terra">${fmt(r.cashFlow.monthlyNetOut)}</div><div class="sub">${c}/мес · по ${r.cashFlow.intervalsUsed} интервалу(ам)</div></div>`);
-    }
-  }
-  if(monthlyExp){
-    const rwTxt=isFinite(runway)?(runway>=99?'>99':runway.toFixed(1)):'∞';
-    metrics.push(`<div class="fc-metric"><div class="k">Запас прочности</div><div class="v gold">${rwTxt}</div><div class="sub">мес. расходов в текущем балансе</div></div>`);
-    metrics.push(`<div class="fc-metric"><div class="k">Безубыточный доход</div><div class="v">${fmt(breakeven)}</div><div class="sub">${c}/мес от работы</div></div>`);
-  }
-  metrics.push(`<div class="fc-metric"><div class="k">Медиана сценария</div><div class="v">${fmt(r.finalMedian)}</div><div class="sub">${c}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Разброс (σ)</div><div class="v">${fmt(r.finalStd)}</div><div class="sub">${c}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Худший сценарий</div><div class="v terra">${fmt(r.finalMin)}</div><div class="sub">${c}</div></div>`);
-  metrics.push(`<div class="fc-metric"><div class="k">Лучший сценарий</div><div class="v green">${fmt(r.finalMax)}</div><div class="sub">${c}</div></div>`);
-  const npClr=r.negativeProb>0.1?'terra':r.negativeProb>0?'gold':'green';
-  metrics.push(`<div class="fc-metric"><div class="k">P(баланс &lt; 0 в конце)</div><div class="v ${npClr}">${(r.negativeProb*100).toFixed(1)}%</div><div class="sub">из ${r.finalRuns.length} симуляций</div></div>`);
-  if(r.midPeriodNegProb!=null){
-    const mpClr=r.midPeriodNegProb>0.2?'terra':r.midPeriodNegProb>0.05?'gold':'green';
-    metrics.push(`<div class="fc-metric"><div class="k">P(кассовый разрыв в пути)</div><div class="v ${mpClr}">${(r.midPeriodNegProb*100).toFixed(1)}%</div><div class="sub">баланс падает &lt; 0 хотя бы раз</div></div>`);
-  }
-  if(r.checkpointDays.length)metrics.push(`<div class="fc-metric"><div class="k">Калибровочных чекпоинтов</div><div class="v gold">${r.checkpointDays.length}</div></div>`);
-  if(r.payDayDates.length)metrics.push(`<div class="fc-metric"><div class="k">Выплат в периоде</div><div class="v">${r.payDayDates.length}</div></div>`);
-
-  return `<div class="fc-breakdown">${bd.join('')}</div>${payout}<div class="fc-metrics">${metrics.join('')}</div>`;
 }
 
 function renderModelTable(r){

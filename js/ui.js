@@ -10,15 +10,24 @@ function toast(msg,timeoutMs){
 }
 
 /* ----- tabs (hash-based routing) ----- */
-const TABS=['data','work','expenses','charts','forecast'];
+const TABS=['forecast','data','plan','work','charts','settings'];
 
 function switchTab(name){
-  if(!TABS.includes(name))name='data';
-  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('active',x.dataset.tab===name));
-  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='panel-'+name));
+  if(!TABS.includes(name))name='forecast';
+  document.querySelectorAll('#tabs button').forEach(button=>{
+    const active=button.dataset.tab===name;
+    button.classList.toggle('active',active);
+    button.setAttribute('aria-selected',String(active));
+    button.tabIndex=active?0:-1;
+  });
+  document.querySelectorAll('.panel').forEach(panel=>{
+    const active=panel.id==='panel-'+name;
+    panel.classList.toggle('active',active);
+    panel.hidden=!active;
+  });
   if(name==='charts')drawAllCharts();
   if(name==='work')renderWork();
-  if(name==='expenses')renderExpenses();
+  if(name==='plan')renderExpenses();
   if(name==='forecast')runForecast(true);
 }
 
@@ -28,6 +37,21 @@ document.getElementById('tabs').addEventListener('click',e=>{
 });
 
 window.addEventListener('hashchange',()=>switchTab(location.hash.slice(1)));
+
+document.getElementById('tabs').addEventListener('keydown',event=>{
+  if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+  const buttons=[...document.querySelectorAll('#tabs button')];
+  const current=buttons.indexOf(document.activeElement);
+  if(current<0)return;
+  let next=current;
+  if(event.key==='ArrowLeft')next=(current-1+buttons.length)%buttons.length;
+  if(event.key==='ArrowRight')next=(current+1)%buttons.length;
+  if(event.key==='Home')next=0;
+  if(event.key==='End')next=buttons.length-1;
+  event.preventDefault();
+  buttons[next].focus();
+  location.hash=buttons[next].dataset.tab;
+});
 
 /* ----- chart hover tooltip ----- */
 const tipEl = (()=>{const d=document.createElement('div');d.className='chart-tip';document.body.appendChild(d);return d})();

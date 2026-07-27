@@ -142,6 +142,7 @@ a{color:inherit}
 .theme-switcher button:hover{color:var(--ink);background:var(--surface-hover)}
 .theme-switcher button[aria-pressed=true]{color:#fff;background:var(--green-deep)}
 .theme-switcher button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.theme-icon{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .theme-switcher small{font-size:9px}
 html[data-theme=dark] .brand-mark{filter:hue-rotate(70deg) saturate(1.28) brightness(1.05)}
 

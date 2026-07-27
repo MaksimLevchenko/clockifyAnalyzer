@@ -17,7 +17,8 @@
 <div class="app-shell">
   <header class="app-header">
     <a class="brand" href="#forecast" aria-label="Денежный горизонт — прогноз">
-      <img class="brand-mark" src="assets/money-horizon-icon.svg" width="42" height="42" alt="">
+      <img class="brand-mark brand-mark-light" src="assets/money-horizon-icon.svg" width="42" height="42" alt="">
+      <img class="brand-mark brand-mark-dark" src="assets/money-horizon-icon-dark.svg" width="42" height="42" alt="">
       <span>
         <strong>Денежный горизонт</strong>
         <small>Личный прогноз дохода и накоплений</small>
@@ -357,9 +358,10 @@
         <div class="subsection">
           <div class="card-heading"><h3>Исключения из расписания</h3><p>Отметь реальную дату прихода и, при необходимости, отдельную границу учтённых часов.</p></div>
           <div class="form-strip">
-            <div class="field"><label for="pda-payout">День выплаты</label><span class="date-wrap"><input type="date" id="pda-payout"><button type="button" class="btn quiet sm date-today" data-for="pda-payout" tabindex="-1">сегодня</button></span></div>
             <div class="field"><label for="pda-accrual">Учтены часы по</label><span class="date-wrap"><input type="date" id="pda-accrual"><button type="button" class="btn quiet sm date-today" data-for="pda-accrual" tabindex="-1">сегодня</button></span></div>
-            <button class="btn secondary" id="pda-add">Добавить исключение</button>
+            <div class="field"><label for="pda-payout">День выплаты <span class="note">(необязательно)</span></label><span class="date-wrap"><input type="date" id="pda-payout"><button type="button" class="btn quiet sm date-today" data-for="pda-payout" tabindex="-1">сегодня</button></span></div>
+            <button class="btn secondary" id="pda-add">Сохранить</button>
+            <button class="btn quiet" id="pda-accrue-today">Учесть часы сегодня</button>
           </div>
           <div id="pda-list" class="event-list"></div>
         </div>
@@ -426,6 +428,7 @@
 <script src="js/forecast-chart.js"></script>
 <script src="js/forecast-summary.js?v=20260725-redesign7"></script>
 <script src="js/sync.js"></script>
+<script src="js/payday-ui.js"></script>
 <script src="js/app.js?v=20260725-redesign5"></script>
 </body>
 </html>

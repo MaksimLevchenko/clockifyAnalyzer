@@ -113,6 +113,7 @@ a{color:inherit}
   border-radius:14px;
   box-shadow:var(--shadow-strong);
 }
+.brand-mark-dark{display:none}
 .brand strong{display:block;font:800 23px/1.05 var(--serif);letter-spacing:-.025em}
 .brand small{display:block;margin-top:5px;color:var(--muted);font-size:11px;letter-spacing:.075em;text-transform:uppercase}
 .ticker{max-width:680px;color:var(--muted);font:12px/1.6 var(--mono);text-align:right}
@@ -144,7 +145,8 @@ a{color:inherit}
 .theme-switcher button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 .theme-icon{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .theme-switcher small{font-size:9px}
-html[data-theme=dark] .brand-mark{filter:hue-rotate(70deg) saturate(1.28) brightness(1.05)}
+html[data-theme=dark] .brand-mark-light{display:none}
+html[data-theme=dark] .brand-mark-dark{display:block}
 
 .app-nav{
   position:sticky;
@@ -495,6 +497,10 @@ canvas{display:block;max-width:100%;cursor:crosshair}
 .wd-pick label.on{color:var(--green-deep);border-color:#9ec5ad;background:var(--green-soft)}
 .wd-pick input{width:auto;min-height:0}
 .event-list{display:grid;gap:7px;margin-top:12px}
+.pending-pay-row{padding:12px;border:1px solid var(--gold);border-radius:12px;background:var(--gold-soft)}
+.pending-pay-row .pending-pay-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.pending-pay-row .pending-pay-heading span{color:var(--muted);font-size:11px}
+.pending-pay-row .pending-pay-actions{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
 .vac-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface-soft);font-size:12px}
 .cp-kind-sel{min-height:30px;padding:4px 6px;border-radius:7px;font-family:var(--mono)}
 .settings-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}

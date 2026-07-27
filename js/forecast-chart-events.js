@@ -51,7 +51,7 @@ function buildForecastEvents(r,leftLimit,endDate){
 
   const schedule=paySchedule(state.payDays);
   const payEvents=schedule.length
-    ?effectivePayEvents(leftLimit,endDate,schedule,state.payDayActuals)
+    ?effectivePayEvents(leftLimit,endDate,schedule,state.payDayActuals,state.pendingPayAccrual)
     :[];
   const earned=payPeriodEarned(state.entries,payEvents,state.rate);
   for(const event of payEvents){

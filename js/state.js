@@ -34,6 +34,13 @@ function migrate(s){
     out.sort((x,y)=>x.payout<y.payout?-1:1);
     s.payDayActuals=out;
   }
+  {
+    const D=/^\d{4}-\d{2}-\d{2}$/;
+    const pending=typeof s.pendingPayAccrual==='string'&&D.test(s.pendingPayAccrual)
+      &&s.pendingPayAccrual<=today()?s.pendingPayAccrual:null;
+    s.pendingPayAccrual=s.payDays.length&&pending
+      &&!s.payDayActuals.some(a=>a.accrual===pending)?pending:null;
+  }
   if(!Array.isArray(s.checkpoints)){
     s.checkpoints=(s.balance!=null&&s.balanceDate)
       ?[{date:s.balanceDate,balance:Number(s.balance)||0}]

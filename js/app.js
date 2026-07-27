@@ -381,7 +381,8 @@ function renderActualExpenses(){
   if(!card)return;
   const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
     excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
-    payDays:state.payDays,payDayActuals:state.payDayActuals
+    payDays:state.payDays,payDayActuals:state.payDayActuals,
+    pendingPayAccrual:state.pendingPayAccrual
   });
   if(!cf){card.style.display='none';return}
   card.style.display='';
@@ -468,84 +469,6 @@ function renderVacations(){
     state.vacations.splice(+b.dataset.vacdel,1);
     saveState();renderVacations();
     if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-  }));
-}
-
-/* ========================= PAY DAYS ========================= */
-function afterPayDaysChange(){
-  renderActualExpenses();
-  if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-}
-
-document.getElementById('pd-add').addEventListener('click',()=>{
-  if(state.payDays.length>=4){toast('Максимум 4 дня зарплаты');return}
-  const last=state.payDays.length?state.payDays[state.payDays.length-1]:0;
-  const next=state.payDays.length?Math.min(28,last+10):5;
-  state.payDays.push(next);
-  saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
-});
-
-function renderPayDays(){
-  const list=document.getElementById('pd-list');
-  const pds=state.payDays.slice().sort((a,b)=>a-b);
-  state.payDays=pds;
-  if(!pds.length){list.innerHTML='<small class="note">Не настроены — доход начисляется ежедневно (как раньше).</small>';}
-  else{
-    list.innerHTML=pds.map((d,i)=>`<div class="field"><label>День зп ${i+1}</label><div style="display:flex;gap:6px;align-items:center"><input type="number" min="1" max="28" value="${d}" data-pdi="${i}" style="width:80px" title="День зп — отсечка часов; деньги по умолчанию приходят в этот же день"><button class="btn terra sm" data-pddel="${i}">×</button></div></div>`).join('');
-    list.querySelectorAll('[data-pdi]').forEach(inp=>inp.addEventListener('change',()=>{
-      const i=+inp.dataset.pdi;
-      state.payDays[i]=Math.max(1,Math.min(28,parseInt(inp.value)||1));
-      saveState();renderPayDays();afterPayDaysChange();
-    }));
-    list.querySelectorAll('[data-pddel]').forEach(b=>b.addEventListener('click',()=>{
-      state.payDays.splice(+b.dataset.pddel,1);
-      saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
-    }));
-  }
-  document.getElementById('pd-add').disabled=pds.length>=4;
-}
-
-/* ----- actual pay dates (overrides for early/late salary) ----- */
-document.getElementById('pda-add').addEventListener('click',()=>{
-  if(!state.payDays.length){toast('Сначала задай дни зп');return}
-  const pInp=document.getElementById('pda-payout'),aInp=document.getElementById('pda-accrual');
-  const payout=pInp.value,accrual=aInp.value||null;
-  if(!payout){toast('Укажи день выплаты (приход денег)');return}
-  if(accrual&&accrual>payout){toast('День учёта часов не может быть позже дня выплаты');return}
-  if(state.payDayActuals.some(a=>a.payout===payout)){toast('Эта дата выплаты уже отмечена');return}
-  state.payDayActuals.push({payout,accrual});
-  pInp.value='';aInp.value='';
-  saveState();renderPayDayActuals();renderActualExpenses();
-  if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-});
-
-function renderPayDayActuals(){
-  const list=document.getElementById('pda-list');
-  if(!list)return;
-  const pInp=document.getElementById('pda-payout'),aInp=document.getElementById('pda-accrual'),addBtn=document.getElementById('pda-add');
-  const hasSchedule=state.payDays.length>0;
-  if(pInp)pInp.disabled=!hasSchedule;
-  if(aInp)aInp.disabled=!hasSchedule;
-  if(addBtn)addBtn.disabled=!hasSchedule;
-  if(!hasSchedule){list.innerHTML='<small class="note">Сначала задай <b>дни зп</b> выше — без расписания отметить фактическую дату нельзя.</small>';return}
-  const acts=[...state.payDayActuals].sort((x,y)=>x.payout<y.payout?-1:1);
-  state.payDayActuals=acts;
-  if(!acts.length){list.innerHTML='<small class="note">Нет отмеченных дат — выплаты считаются по дням зп выше.</small>';return}
-  list.innerHTML=acts.map((a,i)=>`<div class="field"><label>Выплата ${i+1}: приход → учёт часов</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(a.payout)}" data-pdaip="${i}" style="width:150px" title="День прихода денег (может быть в будущем)"><span class="note">→</span><input type="date" value="${esc(a.accrual||'')}" data-pdaia="${i}" style="width:150px" title="День учёта часов (опц., пусто = по дню зп)"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
-  /* deps() обновляет состояние и зависимые виды, но НЕ перерисовывает список —
-     иначе при посегментном вводе даты поле пересоздаётся и ввод сбрасывается. */
-  const deps=()=>{saveState();renderActualExpenses();if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true)};
-  list.querySelectorAll('[data-pdaip]').forEach(inp=>inp.addEventListener('change',()=>{
-    const i=+inp.dataset.pdaip,v=inp.value;
-    if(!v)return; // дату ещё вводят
-    state.payDayActuals[i].payout=v;deps();
-  }));
-  list.querySelectorAll('[data-pdaia]').forEach(inp=>inp.addEventListener('change',()=>{
-    const i=+inp.dataset.pdaia;
-    state.payDayActuals[i].accrual=inp.value||null;deps();
-  }));
-  list.querySelectorAll('[data-pdadel]').forEach(b=>b.addEventListener('click',()=>{
-    state.payDayActuals.splice(+b.dataset.pdadel,1);deps();renderPayDayActuals();
   }));
 }
 
@@ -708,7 +631,8 @@ function runForecast(auto){
   try{
     const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
       excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
-      payDays:state.payDays,payDayActuals:state.payDayActuals
+      payDays:state.payDays,payDayActuals:state.payDayActuals,
+      pendingPayAccrual:state.pendingPayAccrual
     });
     const ae=autoExpenseEstimate(cf);
     const anchorEl=document.getElementById('fc-anchor');
@@ -718,6 +642,7 @@ function runForecast(auto){
       taxRate:state.taxRate,
       vacations:state.vacations,
       payDayActuals:state.payDayActuals,
+      pendingPayAccrual:state.pendingPayAccrual,
       anchorDate,
       autoMonthlyRates:ae?ae.sampleRates:null,
       autoMonthlyDurations:ae?ae.sampleDurations:null
@@ -725,7 +650,8 @@ function runForecast(auto){
     r.cashFlow=cf;r.autoEstimate=ae;
     r.past=reconstructPastBalance(state.entries,state.expenses,state.incomes,state.checkpoints,{
       taxRate:state.taxRate,fallbackRate:state.rate,anchorDate:r.startDate,
-      payDays:state.payDays,payDayActuals:state.payDayActuals
+      payDays:state.payDays,payDayActuals:state.payDayActuals,
+      pendingPayAccrual:state.pendingPayAccrual
     });
     lastFc=r;
     document.getElementById('fc-chart-shell').classList.remove('is-empty');

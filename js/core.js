@@ -504,10 +504,12 @@ function payEventHistoryStart(es,anchorDate){
    {payout, accrual?} (приход денег + день учёта часов): подменяют ближайшее по
    дню зп запланированное событие в окне ±PAYDAY_MATCH_WINDOW (payout → дата
    прихода; accrual → если задан, реальный день учёта); несвязанные —
-   самостоятельные выплаты. Старый формат actuals (строка) = {payout, accrual:null}.
+   самостоятельные выплаты. pendingAccrual закрывает период без денежного
+   поступления: {accrual:pendingAccrual,payout:null}. Старый формат actuals
+   (строка) = {payout, accrual:null}.
    Возврат [{accrual,payout}] (YYYY-MM-DD), отсортировано по payout; оставляем
    события, у которых accrual ИЛИ payout попадает в [start,end]. */
-function effectivePayEvents(start,end,schedule,actuals){
+function effectivePayEvents(start,end,schedule,actuals,pendingAccrual){
   if(!schedule||!schedule.length)return[];
   const pStart=addDays(start,-40),pEnd=addDays(end,40);
   const events=[];
@@ -520,7 +522,10 @@ function effectivePayEvents(start,end,schedule,actuals){
     }
     m++;if(m>12){m=1;y++}
   }
-  const bypay=(a,b)=>a.payout<b.payout?-1:a.payout>b.payout?1:(a.accrual<b.accrual?-1:1);
+  const bypay=(a,b)=>{
+    const ap=a.payout||'9999-12-31',bp=b.payout||'9999-12-31';
+    return ap<bp?-1:ap>bp?1:(a.accrual<b.accrual?-1:1);
+  };
   const acts=(actuals||[]).map(a=>typeof a==='string'?{payout:a,accrual:null}:{payout:a&&a.payout,accrual:(a&&a.accrual)||null})
     .filter(a=>a.payout).sort((x,y)=>x.payout<y.payout?-1:1);
   const claimed=new Array(events.length).fill(false);
@@ -555,8 +560,22 @@ function effectivePayEvents(start,end,schedule,actuals){
     if(best>=0){claimed[best]=true;events[best].payout=a.payout;if(a.accrual)events[best].accrual=a.accrual}
     else events.push({accrual:a.accrual||a.payout,payout:a.payout});
   }
+  if(pendingAccrual){
+    let best=-1,bestDist=Infinity;
+    for(let i=0;i<events.length;i++){
+      if(claimed[i])continue;
+      const dist=Math.abs(daysBetween(events[i].accrual,pendingAccrual));
+      if(dist<bestDist){bestDist=dist;best=i}
+    }
+    if(best>=0&&bestDist<=PAYDAY_MATCH_WINDOW){
+      claimed[best]=true;
+      events[best].accrual=pendingAccrual;
+      events[best].payout=null;
+    }else events.push({accrual:pendingAccrual,payout:null});
+  }
   events.sort(bypay);
-  return events.filter(e=>(e.accrual>=start&&e.accrual<=end)||(e.payout>=start&&e.payout<=end));
+  return events.filter(e=>(e.accrual>=start&&e.accrual<=end)
+    ||(e.payout&&e.payout>=start&&e.payout<=end));
 }
 
 /* Для каждого события — заработок периода (prevAccrual, accrual] из реальных
@@ -616,7 +635,9 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
   const useDelayed=schedule.length>0;
   /* Pay events around the anchor and across the horizon: each pairs an accrual
      day (день зп — hours cutoff) with a payout day (день выплаты — money lands). */
-  const events=useDelayed?effectivePayEvents(payEventHistoryStart(es,balanceDate),end,schedule,opts.payDayActuals):[];
+  const events=useDelayed?effectivePayEvents(
+    payEventHistoryStart(es,balanceDate),end,schedule,opts.payDayActuals,opts.pendingPayAccrual
+  ):[];
   const accrualSorted=[...events].sort((a,b)=>a.accrual<b.accrual?-1:1);
   const periods=payPeriodEarned(es,events,rate); // accrualDate -> {gross,hours,prev,payout}
   /* accrual day -> payout day, only for accruals inside the forecast range —
@@ -632,7 +653,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     let og=0,oh=0;
     for(const e of es)if(e.date<=balanceDate&&(!lastAccrual||e.date>lastAccrual)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
     openMoney=og;openHours=oh;
-    for(const ev of events)if(ev.accrual<=balanceDate&&ev.payout>balanceDate){
+    for(const ev of events)if(ev.accrual<=balanceDate&&(ev.payout===null||ev.payout>balanceDate)){
       const pe=periods.get(ev.accrual);if(pe)seededLots.push({payout:ev.payout,money:pe.gross,hours:pe.hours});
     }
   }
@@ -647,14 +668,19 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     for(const ev of accrualSorted){if(ev.accrual<=ref)lastAccrualRef=ev.accrual;else break}
     let og=0,oh=0;
     for(const e of es)if(e.date<=ref&&(!lastAccrualRef||e.date>lastAccrualRef)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
-    let pm=0,ph=0,nextPayout=null;
-    for(const ev of events)if(ev.accrual<=ref&&ev.payout>ref){
-      const pe=periods.get(ev.accrual);if(pe){pm+=pe.gross;ph+=pe.hours;if(!nextPayout||ev.payout<nextPayout)nextPayout=ev.payout}
+    let pm=0,ph=0,nextPayout=null,hasUnknownPayout=false;
+    for(const ev of events)if(ev.accrual<=ref&&(ev.payout===null||ev.payout>ref)){
+      const pe=periods.get(ev.accrual);
+      if(pe){
+        pm+=pe.gross;ph+=pe.hours;
+        if(ev.payout===null)hasUnknownPayout=true;
+        else if(!nextPayout||ev.payout<nextPayout)nextPayout=ev.payout;
+      }
     }
     unpaidNow=og+pm;unpaidNowHours=oh+ph;
-    if(pm>0)pendingNow={money:pm,hours:ph,nextPayout};
+    if(pm>0)pendingNow={money:pm,hours:ph,nextPayout:hasUnknownPayout?null:nextPayout};
     let lastEv=null;
-    for(const ev of events)if(ev.payout<=ref&&(!lastEv||ev.payout>lastEv.payout))lastEv=ev;
+    for(const ev of events)if(ev.payout&&ev.payout<=ref&&(!lastEv||ev.payout>lastEv.payout))lastEv=ev;
     if(lastEv){
       const pe=periods.get(lastEv.accrual);
       if(pe)prevSalary={date:lastEv.payout,money:pe.gross,tax:pe.gross*taxRate,hours:pe.hours,
@@ -983,10 +1009,12 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   const useDelayed=schedule.length>0;
   let depositByDay=null;
   if(useDelayed){
-    const events=effectivePayEvents(payEventHistoryStart(es,firstDate),anchorDate,schedule,opts.payDayActuals);
+    const events=effectivePayEvents(
+      payEventHistoryStart(es,firstDate),anchorDate,schedule,opts.payDayActuals,opts.pendingPayAccrual
+    );
     const pr=payPeriodEarned(es,events,fallbackRate);
     depositByDay=new Map();
-    for(const ev of events)if(ev.payout>=firstDate&&ev.payout<=anchorDate){
+    for(const ev of events)if(ev.payout&&ev.payout>=firstDate&&ev.payout<=anchorDate){
       const pe=pr.get(ev.accrual);if(pe)depositByDay.set(ev.payout,(depositByDay.get(ev.payout)||0)+pe.gross);
     }
   }
@@ -1044,9 +1072,12 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
      period earnings whose DEPOSIT (payout) lands inside (A,B] — money that
      actually hit the balance there (with payout==accrual reduces to the old
      "work paid in window" boundary logic). */
-  const events=useDelayed?effectivePayEvents(payEventHistoryStart(es,sorted[0].date),sorted[sorted.length-1].date,schedule,payActuals):[];
+  const events=useDelayed?effectivePayEvents(
+    payEventHistoryStart(es,sorted[0].date),sorted[sorted.length-1].date,
+    schedule,payActuals,opts.pendingPayAccrual
+  ):[];
   const periods=payPeriodEarned(es,events,fallbackRate);
-  const paidGross=(from,to)=>{let g=0;for(const ev of events)if(ev.payout>from&&ev.payout<=to){const pe=periods.get(ev.accrual);if(pe)g+=pe.gross}return g};
+  const paidGross=(from,to)=>{let g=0;for(const ev of events)if(ev.payout&&ev.payout>from&&ev.payout<=to){const pe=periods.get(ev.accrual);if(pe)g+=pe.gross}return g};
   const intervals=[],usedRates=[];
   let totalNetOut=0,totalImplicit=0,totalEarned=0,totalDays=0;
   for(let i=1;i<sorted.length;i++){

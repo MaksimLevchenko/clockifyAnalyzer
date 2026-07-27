@@ -81,8 +81,9 @@ function renderForecastSummary(r,end){
   const salarySub=nextSalary
     ?`${esc(dateRu(nextSalary.date,true))}${salaryTax}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
+  const unknownPayout=r.pendingNow&&r.pendingNow.nextPayout==null;
   const unpaidSub=r.unpaidNowHours
-    ?`${fmt(r.unpaidNowHours)} ч уже отработано`
+    ?`${fmt(r.unpaidNowHours)} ч уже отработано${unknownPayout?' · дата выплаты пока не указана':''}`
     :'Нет неоплаченных часов';
   const roundedUnpaid=forecastMoneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate);
   const scenarioDate=esc(dateRu(end,true));

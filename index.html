@@ -54,6 +54,18 @@
         <a class="text-action" href="#data">Обновить баланс <span aria-hidden="true">→</span></a>
       </header>
 
+      <div class="home-utility-grid">
+        <section class="home-payday-card" id="home-payday" aria-live="polite"></section>
+        <button class="home-merge-card" type="button" id="home-merge-trigger">
+          <span class="home-merge-icon" aria-hidden="true">↻</span>
+          <span>
+            <strong>Догрузить Clockify</strong>
+            <small>CSV/PDF · новые записи без дублей</small>
+          </span>
+          <span class="home-merge-arrow" aria-hidden="true">→</span>
+        </button>
+      </div>
+
       <div class="card forecast-card">
         <div class="forecast-controls">
           <div class="field">
@@ -66,7 +78,6 @@
               <option value="">Авто — последний фактический</option>
             </select>
           </div>
-          <button class="btn primary" id="fc-run">Пересчитать</button>
         </div>
 
         <div class="fc-summary" id="fc-summary">

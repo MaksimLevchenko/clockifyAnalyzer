@@ -98,6 +98,9 @@ function formatMissingExportEntry(e){
 
 document.getElementById('file-import').addEventListener('change',function(){handleReportImport(this,'replace')});
 document.getElementById('file-merge').addEventListener('change',function(){handleReportImport(this,'merge')});
+document.getElementById('home-merge-trigger').addEventListener('click',()=>{
+  document.getElementById('file-merge').click();
+});
 
 document.getElementById('btn-export').addEventListener('click',()=>{
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
@@ -126,7 +129,7 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
     if(k==='currency')state.currency=el.value||'USD';
     if(k==='halfLife')state.halfLife=Math.max(7,Math.min(365,parseInt(el.value)||60));
     if(k==='taxRate')state.taxRate=Math.max(0,Math.min(100,parseFloat(el.value)||0));
-    saveState();renderTicker();renderDataStats();renderCheckpoints();renderIncomes();renderExpenses();renderActualExpenses();
+    saveState();renderTicker();renderDataStats();renderCheckpoints();renderIncomes();renderExpenses();renderActualExpenses();renderHomePayday();
     if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
   });
 });
@@ -705,7 +708,6 @@ function renderModelTable(r){
   }).join('');
 }
 
-document.getElementById('fc-run').addEventListener('click',()=>runForecast(false));
 document.getElementById('fc-end').addEventListener('change',()=>runForecast(true));
 const fcAnchor=document.getElementById('fc-anchor');
 if(fcAnchor)fcAnchor.addEventListener('change',()=>runForecast(true));
@@ -932,12 +934,12 @@ document.addEventListener('click',e=>{
 function afterDataChange(opts){
   if(opts&&opts.silent)saveStateRaw();
   else saveState();
-  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderPayDayActuals();renderSync();
+  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPaydayViews();renderSync();
   if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 
-syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPayDays();renderPayDayActuals();renderSync();
+syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPaydayViews();renderSync();
 switchTab(location.hash.slice(1));
 maybeAutoPull();
 

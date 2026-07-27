@@ -7,7 +7,7 @@ document.getElementById('pd-add').addEventListener('click',()=>{
   if(state.payDays.length>=4){toast('Максимум 4 дня зарплаты');return}
   const last=state.payDays.length?state.payDays[state.payDays.length-1]:0;
   state.payDays.push(state.payDays.length?Math.min(28,last+10):5);
-  saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
+  saveState();renderPaydayViews();afterPayDaysChange();
 });
 
 function renderPayDays(){
@@ -20,14 +20,14 @@ function renderPayDays(){
     list.querySelectorAll('[data-pdi]').forEach(inp=>inp.addEventListener('change',()=>{
       const i=+inp.dataset.pdi;
       state.payDays[i]=Math.max(1,Math.min(28,parseInt(inp.value)||1));
-      saveState();renderPayDays();afterPayDaysChange();
+      saveState();renderPaydayViews();afterPayDaysChange();
     }));
     list.querySelectorAll('[data-pddel]').forEach(button=>button.addEventListener('click',()=>{
       if(state.pendingPayAccrual&&state.payDays.length===1){
         toast('Сначала укажи выплату или удали ожидание');return;
       }
       state.payDays.splice(+button.dataset.pddel,1);
-      saveState();renderPayDays();renderPayDayActuals();afterPayDaysChange();
+      saveState();renderPaydayViews();afterPayDaysChange();
     }));
   }
   document.getElementById('pd-add').disabled=pds.length>=4;
@@ -44,15 +44,29 @@ function completePendingPayAccrual(payout){
   return true;
 }
 
+function startPendingPayAccrual(accrual){
+  if(!state.payDays.length){toast('Сначала задай дни зп');return false}
+  if(state.pendingPayAccrual){toast('Сначала укажи выплату для уже учтённых часов');return false}
+  if(!accrual||accrual>today()){toast('День учёта часов не может быть в будущем');return false}
+  if(state.payDayActuals.some(actual=>actual.accrual===accrual)){
+    toast('Часы за эту дату уже учтены');return false;
+  }
+  state.pendingPayAccrual=accrual;
+  return true;
+}
+
 function refreshPayActuals(){
-  saveState();renderPayDayActuals();renderActualExpenses();
+  saveState();renderPayDayActuals();renderHomePayday();renderActualExpenses();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 
+function clearPendingPayAccrual(){
+  state.pendingPayAccrual=null;
+  refreshPayActuals();
+}
+
 document.getElementById('pda-accrue-today').addEventListener('click',()=>{
-  if(!state.payDays.length){toast('Сначала задай дни зп');return}
-  if(state.pendingPayAccrual){toast('Сначала укажи выплату для уже учтённых часов');return}
-  state.pendingPayAccrual=today();
+  if(!startPendingPayAccrual(today()))return;
   document.getElementById('pda-payout').value='';
   document.getElementById('pda-accrual').value='';
   refreshPayActuals();
@@ -66,8 +80,7 @@ document.getElementById('pda-add').addEventListener('click',()=>{
   if(state.pendingPayAccrual){
     if(!completePendingPayAccrual(payout))return;
   }else if(accrual&&!payout){
-    if(accrual>today()){toast('День учёта часов не может быть в будущем');return}
-    state.pendingPayAccrual=accrual;
+    if(!startPendingPayAccrual(accrual))return;
   }else{
     if(!payout){toast('Укажи день учёта часов или день выплаты');return}
     if(accrual&&accrual>payout){toast('День учёта часов не может быть позже дня выплаты');return}
@@ -78,8 +91,8 @@ document.getElementById('pda-add').addEventListener('click',()=>{
   refreshPayActuals();
 });
 
-function pendingPayHtml(){
-  if(!state.pendingPayAccrual)return'';
+function pendingPayInfo(){
+  if(!state.pendingPayAccrual)return null;
   const end=today();
   const events=effectivePayEvents(
     payEventHistoryStart(state.entries,end),end,paySchedule(state.payDays),
@@ -89,8 +102,13 @@ function pendingPayHtml(){
   const detail=period
     ?`${fmt(period.hours)} ч · ${fmt(period.gross)} ${esc(cur())}`
     :'Сумма появится после импорта часов';
+  return{date:state.pendingPayAccrual,detail};
+}
+
+function pendingPayHtml(info){
+  if(!info)return'';
   return `<div class="pending-pay-row">
-    <div class="pending-pay-heading"><strong>Ждёт выплаты · часы учтены по ${esc(dateRu(state.pendingPayAccrual,true))}</strong><span>${detail}</span></div>
+    <div class="pending-pay-heading"><strong>Ждёт выплаты · часы учтены по ${esc(dateRu(info.date,true))}</strong><span>${info.detail}</span></div>
     <div class="pending-pay-actions">
       <div class="field"><label for="pda-pending-payout">День выплаты</label><input type="date" id="pda-pending-payout"></div>
       <button class="btn secondary sm" data-pda-complete>Указать выплату</button>
@@ -119,7 +137,7 @@ function renderPayDayActuals(){
   const actuals=[...state.payDayActuals].sort((a,b)=>a.payout<b.payout?-1:1);
   state.payDayActuals=actuals;
   const actualHtml=actuals.map((actual,i)=>`<div class="field"><label>Выплата ${i+1}: приход → учёт часов</label><div style="display:flex;gap:6px;align-items:center"><input type="date" value="${esc(actual.payout)}" data-pdaip="${i}" style="width:150px" title="День прихода денег (может быть в будущем)"><span class="note">→</span><input type="date" value="${esc(actual.accrual||'')}" data-pdaia="${i}" style="width:150px" title="День учёта часов (опц., пусто = по дню зп)"><button class="btn terra sm" data-pdadel="${i}">×</button></div></div>`).join('');
-  list.innerHTML=pendingPayHtml()+actualHtml
+  list.innerHTML=pendingPayHtml(pendingPayInfo())+actualHtml
     ||'<small class="note">Нет отмеченных дат — выплаты считаются по дням зп выше.</small>';
   list.querySelector('[data-pda-complete]')?.addEventListener('click',()=>{
     const payout=document.getElementById('pda-pending-payout').value;
@@ -128,9 +146,9 @@ function renderPayDayActuals(){
     }
   });
   list.querySelector('[data-pda-pending-delete]')?.addEventListener('click',()=>{
-    state.pendingPayAccrual=null;refreshPayActuals();
+    clearPendingPayAccrual();
   });
-  const update=()=>{saveState();renderActualExpenses();if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true)};
+  const update=()=>refreshPayActuals();
   list.querySelectorAll('[data-pdaip]').forEach(input=>input.addEventListener('change',()=>{
     const i=+input.dataset.pdaip;
     if(input.value){state.payDayActuals[i].payout=input.value;update()}
@@ -143,6 +161,61 @@ function renderPayDayActuals(){
     state.payDayActuals[i].accrual=input.value||null;update();
   }));
   list.querySelectorAll('[data-pdadel]').forEach(button=>button.addEventListener('click',()=>{
-    state.payDayActuals.splice(+button.dataset.pdadel,1);update();renderPayDayActuals();
+    state.payDayActuals.splice(+button.dataset.pdadel,1);update();
   }));
+}
+
+function renderHomePayday(){
+  const box=document.getElementById('home-payday');
+  if(!box)return;
+  if(!state.payDays.length){
+    box.innerHTML=`<div class="home-payday-layout"><div class="home-payday-copy">
+      <span class="home-payday-kicker">Учёт зарплаты</span>
+      <strong class="home-payday-title">Сначала настрой день зарплаты</strong>
+      <span class="home-payday-detail">После этого часы можно будет закрывать прямо здесь.</span>
+    </div><a class="btn quiet sm" href="#settings">Открыть настройки</a></div>`;
+    return;
+  }
+  const info=pendingPayInfo();
+  if(!info){
+    const todayAccrued=state.payDayActuals.some(actual=>actual.accrual===today());
+    if(todayAccrued){
+      box.innerHTML=`<div class="home-payday-layout"><div class="home-payday-copy">
+        <span class="home-payday-kicker">Расчётный период закрыт</span>
+        <strong class="home-payday-title">Часы по сегодня уже учтены</strong>
+        <span class="home-payday-detail">Следующий период можно закрыть позднее или указать вручную в настройках.</span>
+      </div><a class="btn quiet sm" href="#settings">Открыть настройки</a></div>`;
+      return;
+    }
+    box.innerHTML=`<div class="home-payday-layout"><div class="home-payday-copy">
+      <span class="home-payday-kicker">Расчётный период открыт</span>
+      <strong class="home-payday-title">Зафиксировать часы по сегодня</strong>
+      <span class="home-payday-detail">Выплату можно указать позже, когда деньги придут.</span>
+      <span class="home-pay-route" aria-hidden="true"><span class="done"></span><i></i><span></span></span>
+    </div><div class="home-payday-actions"><button class="btn primary" data-home-accrue>Учесть часы сегодня</button></div></div>`;
+    box.querySelector('[data-home-accrue]').addEventListener('click',()=>{
+      if(startPendingPayAccrual(today()))refreshPayActuals();
+    });
+    return;
+  }
+  box.innerHTML=`<div class="home-payday-layout"><div class="home-payday-copy">
+    <span class="home-payday-kicker">Ждёт выплаты</span>
+    <strong class="home-payday-title">Часы учтены по ${esc(dateRu(info.date,true))}</strong>
+    <span class="home-payday-detail">${info.detail} · дата прихода пока не указана</span>
+    <span class="home-pay-route" aria-hidden="true"><span class="done"></span><i></i><span></span></span>
+  </div><div class="home-payday-actions">
+    <div class="field"><label for="home-payout-date">День выплаты</label><input type="date" id="home-payout-date"></div>
+    <button class="btn primary sm" data-home-complete>Указать выплату</button>
+    <button class="btn quiet sm" data-home-clear>Удалить ожидание</button>
+  </div></div>`;
+  box.querySelector('[data-home-complete]').addEventListener('click',()=>{
+    if(completePendingPayAccrual(document.getElementById('home-payout-date').value))refreshPayActuals();
+  });
+  box.querySelector('[data-home-clear]').addEventListener('click',()=>{
+    clearPendingPayAccrual();
+  });
+}
+
+function renderPaydayViews(){
+  renderPayDays();renderPayDayActuals();renderHomePayday();
 }

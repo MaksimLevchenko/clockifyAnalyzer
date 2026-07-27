@@ -5,8 +5,24 @@ const COL = {
   ink:'#23201a', muted:'#736a58', line:'#ddd0b8',
   green:'#2f6b4f', terra:'#b1462c', gold:'#a9792a',
   past:'#3d6e8e',
-  band:'rgba(47,107,79,.16)'
+  band:'rgba(47,107,79,.16)',
+  plot:'rgba(255,255,255,.25)',
+  marker:'rgba(35,32,26,.42)',
+  reference:'rgba(115,106,88,.7)'
 };
+
+function syncChartColors(){
+  const styles=getComputedStyle(document.documentElement);
+  const read=name=>styles.getPropertyValue(name).trim();
+  Object.assign(COL,{
+    ink:read('--ink'),muted:read('--muted'),line:read('--line'),
+    green:read('--green'),terra:read('--terra'),gold:read('--gold'),
+    past:read('--blue'),band:read('--chart-band'),plot:read('--chart-plot'),
+    marker:read('--chart-marker'),reference:read('--chart-reference')
+  });
+}
+
+syncChartColors();
 const CHART_HEIGHTS = {
   'ch-daily':220, 'ch-hours':220, 'ch-monthly':220, 'ch-cum':220,
   'ch-proj':240, 'ch-wd':200, 'ch-hist':200, 'ch-bal':240,
@@ -378,4 +394,14 @@ window.addEventListener('resize',()=>{
       drawFinalDist(lastFc);
     }
   },150);
+});
+
+document.addEventListener('app-theme-change',()=>{
+  syncChartColors();
+  if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
+  if(document.getElementById('panel-forecast').classList.contains('active')&&lastFc){
+    drawForecast('ch-fc',lastFc,lastFc.startBalance,true);
+    drawMonthlyForecast(lastFc);
+    drawFinalDist(lastFc);
+  }
 });

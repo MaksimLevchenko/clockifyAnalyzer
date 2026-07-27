@@ -21,7 +21,7 @@ function drawEventMarker(ctx,cx,cy,events,width){
     ctx.fillRect(cx-markerW/2,y,markerW,markerH/types.length+.5);
   });
   ctx.restore();
-  ctx.strokeStyle='rgba(35,32,26,.42)';ctx.lineWidth=.7;
+  ctx.strokeStyle=COL.marker;ctx.lineWidth=.7;
   ctx.beginPath();
   if(ctx.roundRect)ctx.roundRect(cx-markerW/2,cy-markerH/2,markerW,markerH,markerW/2);
   else ctx.rect(cx-markerW/2,cy-markerH/2,markerW,markerH);
@@ -75,7 +75,7 @@ function drawForecast(id,r,startBal,keepView){
   const Y=value=>h-pad.b-plotH*(value-minValue)/valueSpan;
   const small=w<420;
 
-  x.fillStyle='rgba(255,255,255,.25)';x.fillRect(pad.l,pad.t,plotW,plotH);
+  x.fillStyle=COL.plot;x.fillRect(pad.l,pad.t,plotW,plotH);
   x.strokeStyle=COL.line;x.fillStyle=COL.muted;x.lineWidth=1;
   x.font=(small?'10px':'11px')+' Spline Sans Mono, monospace';
   const tickCount=Math.round(valueSpan/tickStep);
@@ -114,7 +114,7 @@ function drawForecast(id,r,startBal,keepView){
     x.beginPath();x.moveTo(pad.l,Y(0));x.lineTo(w-pad.r,Y(0));x.stroke();x.setLineDash([]);
   }
   if(startBal>=minValue&&startBal<=maxValue){
-    x.setLineDash([4,5]);x.strokeStyle='rgba(115,106,88,.7)';x.lineWidth=1;
+    x.setLineDash([4,5]);x.strokeStyle=COL.reference;x.lineWidth=1;
     x.beginPath();x.moveTo(pad.l,Y(startBal));x.lineTo(w-pad.r,Y(startBal));x.stroke();x.setLineDash([]);
   }
   if(past){

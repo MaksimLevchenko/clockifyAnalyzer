@@ -101,7 +101,7 @@ function forecastEventHtml(event,currency){
 }
 
 function forecastTooltip(date,balance,events,currency){
-  const header=`<b class="tip-date">${esc(dateRu(date,true))} · ${WD[wd(date)]}</b>`;
+  const header=`<b class="tip-date">${esc(dateRu(date,true))} · ${WD[wd(date)]}</b><br>`;
   const value=balance.kind==='past'
     ?`Фактический баланс: <b>${fmt(balance.value)} ${currency}</b>`
     :`Средний баланс: <b>${fmt(balance.value)} ${currency}</b><br><span class="sub">80%: ${fmt(balance.low)} — ${fmt(balance.high)} ${currency}</span>`;

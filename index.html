@@ -3,23 +3,34 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#20523c">
 <title>Денежный горизонт</title>
+<link rel="icon" href="assets/money-horizon-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/money-horizon-icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20260725-redesign7">
+<script src="js/theme.js?v=20260727-theme1"></script>
+<link rel="stylesheet" href="styles.css?v=20260727-theme1">
 </head>
 <body>
 <div class="app-shell">
   <header class="app-header">
     <a class="brand" href="#forecast" aria-label="Денежный горизонт — прогноз">
-      <span class="brand-mark" aria-hidden="true">↗</span>
+      <img class="brand-mark" src="assets/money-horizon-icon.svg" width="42" height="42" alt="">
       <span>
         <strong>Денежный горизонт</strong>
         <small>Личный прогноз дохода и накоплений</small>
       </span>
     </a>
-    <div class="ticker" id="ticker">нет данных</div>
+    <div class="header-tools">
+      <div class="ticker" id="ticker">нет данных</div>
+      <div class="theme-switcher" role="group" aria-label="Тема оформления">
+        <button type="button" data-theme-choice="system" aria-pressed="true" title="Как в системе"><span aria-hidden="true">◐</span><small>Авто</small></button>
+        <button type="button" data-theme-choice="light" aria-pressed="false" title="Светлая тема"><span aria-hidden="true">☀</span><small>Светлая</small></button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false" title="Тёмная тема"><span aria-hidden="true">☾</span><small>Тёмная</small></button>
+      </div>
+    </div>
   </header>
 
   <nav class="app-nav" id="tabs" role="tablist" aria-label="Разделы приложения">

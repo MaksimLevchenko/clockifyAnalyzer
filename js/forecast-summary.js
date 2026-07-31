@@ -73,19 +73,19 @@ function renderForecastSummary(r,end){
     ?forecastRoundedMoney(nextSalary.mean,roundedSalary,currency,true)
     :'Нет в периоде';
   const taxRate=Math.max(0,Number(r.taxRate)||0);
-  const salaryWithTax=nextSalary?nextSalary.mean*(1+taxRate):0;
-  const roundedSalaryWithTax=roundedSalary*(1+taxRate);
-  const salaryTax=nextSalary&&taxRate>0
-    ?`<span class="salary-tax">К выставлению с налогом: <b>${forecastRoundedMoney(salaryWithTax,roundedSalaryWithTax,currency)}</b></span>`
-    :'';
   const salarySub=nextSalary
-    ?`${esc(dateRu(nextSalary.date,true))}${salaryTax}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
+    ?`${esc(dateRu(nextSalary.date,true))}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
   const unknownPayout=r.pendingNow&&r.pendingNow.nextPayout==null;
-  const unpaidSub=r.unpaidNowHours
-    ?`${fmt(r.unpaidNowHours)} ч уже отработано${unknownPayout?' · дата выплаты пока не указана':''}`
-    :'Нет неоплаченных часов';
   const roundedUnpaid=forecastMoneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate);
+  const unpaidWithTax=(Number(r.unpaidNow)||0)*(1+taxRate);
+  const roundedUnpaidWithTax=roundedUnpaid*(1+taxRate);
+  const unpaidTax=r.unpaidNowHours&&taxRate>0
+    ?`<span class="tax-inclusive">К выставлению с налогом: <b>${forecastRoundedMoney(unpaidWithTax,roundedUnpaidWithTax,currency)}</b></span>`
+    :'';
+  const unpaidSub=r.unpaidNowHours
+    ?`${fmt(r.unpaidNowHours)} ч уже отработано${unknownPayout?' · дата выплаты пока не указана':''}${unpaidTax}`
+    :'Нет неоплаченных часов';
   const scenarioDate=esc(dateRu(end,true));
 
   const details=[];

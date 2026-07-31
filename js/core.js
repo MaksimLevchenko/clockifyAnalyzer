@@ -172,9 +172,10 @@ function startSecs(s){const t=(String(s).split('T')[1]||'00:00:00').split(':').m
 const MERGE_HOURS_TOLERANCE=2.5;
 
 /* Догрузка: помимо пропуска точных дублей, распознаёт записи, у которых из-за
-   перераспределения сместилось время суток (и, в пределах ±2.5 ч, длительность),
-   и заменяет ими старые версии. Сопоставление пер-запись, 1-к-1, в рамках одной
-   группы entryGroupKey. Несопоставленные локальные записи не удаляются;
+   перераспределения сместилось время суток или изменилась длительность, и заменяет
+   ими старые версии. При одинаковом времени начала разница часов не ограничена;
+   при сдвинутом — действует допуск ±2.5 ч. Сопоставление пер-запись, 1-к-1, в рамках
+   одной группы entryGroupKey. Несопоставленные локальные записи не удаляются;
    попавшие в диапазон дат экспорта считаются в `missing` для предупреждения. */
 function mergeEntries(o,n){
   if(!o||!o.length)return{entries:(n||[]).slice().sort(byStart),added:(n||[]).length,replaced:0,missing:0,missingEntries:[]};
@@ -196,16 +197,18 @@ function mergeEntries(o,n){
       const kj=entryKey(NEW[j]);
       for(let i=0;i<OLD.length;i++)if(!oUsed[i]&&entryKey(OLD[i])===kj){oUsed[i]=true;nUsed[j]=true;keep(OLD[i]);break}
     }
-    /* 2) остаток сопоставляем 1-к-1: ближайшая длительность (≤ допуск), затем
-       ближайшее время начала, затем стабильный порядок */
+    /* 2) остаток сопоставляем 1-к-1: одинаковое время начала независимо от
+       длительности либо ближайшая длительность (≤ допуск) при сдвинутом времени */
     const cands=[];
     for(let i=0;i<OLD.length;i++){if(oUsed[i])continue;
       for(let j=0;j<NEW.length;j++){if(nUsed[j])continue;
         const dh=Math.abs(OLD[i].hours-NEW[j].hours);
-        if(dh<=MERGE_HOURS_TOLERANCE+1e-9)cands.push({i,j,dh,dt:Math.abs(startSecs(OLD[i].start)-startSecs(NEW[j].start))});
+        const dt=Math.abs(startSecs(OLD[i].start)-startSecs(NEW[j].start));
+        const sameStart=dt===0;
+        if(sameStart||dh<=MERGE_HOURS_TOLERANCE+1e-9)cands.push({i,j,dh,sameStart,dt});
       }
     }
-    cands.sort((a,b)=>a.dh-b.dh||a.dt-b.dt||a.i-b.i||a.j-b.j);
+    cands.sort((a,b)=>Number(b.sameStart)-Number(a.sameStart)||a.dh-b.dh||a.dt-b.dt||a.i-b.i||a.j-b.j);
     for(const c of cands){if(oUsed[c.i]||nUsed[c.j])continue;oUsed[c.i]=true;nUsed[c.j]=true;keep(NEW[c.j]);replaced++}
     /* 3) несопоставленные новые — добавляем (без точного дубля) */
     for(let j=0;j<NEW.length;j++)if(!nUsed[j]){if(seen.has(entryKey(NEW[j])))continue;keep(NEW[j]);added++}

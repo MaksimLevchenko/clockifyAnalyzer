@@ -74,7 +74,7 @@ function renderForecastSummary(r,end){
     :'Нет в периоде';
   const taxRate=Math.max(0,Number(r.taxRate)||0);
   const salarySub=nextSalary
-    ?`Выплата: ${esc(dateRu(nextSalary.date,true))}${nextSalary.accrual?` · отсечка: ${esc(dateRu(nextSalary.accrual,true))}`:''}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
+    ?`Выплата: ${esc(dateRu(nextSalary.date,true))}${nextSalary.accrual?` · отсечка: ${esc(dateRu(nextSalary.accrual,true))} (включительно)`:''}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
   const unknownPayout=r.pendingNow&&r.pendingNow.nextPayout==null;
   const roundedUnpaid=forecastMoneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate);

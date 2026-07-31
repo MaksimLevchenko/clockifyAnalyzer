@@ -654,7 +654,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     for(const e of es)if(e.date<=balanceDate&&(!lastAccrual||e.date>lastAccrual)){og+=e.hours*(e.rate>0?e.rate:rate);oh+=e.hours}
     openMoney=og;openHours=oh;
     for(const ev of events)if(ev.accrual<=balanceDate&&(ev.payout===null||ev.payout>balanceDate)){
-      const pe=periods.get(ev.accrual);if(pe)seededLots.push({payout:ev.payout,money:pe.gross,hours:pe.hours});
+      const pe=periods.get(ev.accrual);if(pe)seededLots.push({accrual:ev.accrual,payout:ev.payout,money:pe.gross,hours:pe.hours});
     }
   }
   /* initialUnpaid = всё начисленное до якоря, но ещё не на балансе (открытый
@@ -763,7 +763,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
      last accrual); lots — closed periods awaiting their payout date, each with a
      per-sim amount. openExpH — expected gross hours of the open period. */
   const openPool=new Float64Array(nSims).fill(openMoney);
-  const lots=seededLots.map(l=>({payout:l.payout,amount:new Float64Array(nSims).fill(l.money),hours:l.hours}));
+  const lots=seededLots.map(l=>({accrual:l.accrual,payout:l.payout,amount:new Float64Array(nSims).fill(l.money),hours:l.hours}));
   let openExpH=openHours;
   const mean=[],p10=[],p90=[];const payDayDates=[];
   const expectedWork=[],expectedExp=[],expectedInc=[];
@@ -790,17 +790,21 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
     /* Delayed-payday bookkeeping: maybe close the open period (accrual day) into
        a lot; maybe release lots whose payout == today (deposit). A lot whose
        payout equals its accrual closes and pays out the same day (== old model). */
-    let newLot=null,releasing=null,depositToday=false,captureNext=false,todayBonuses=null,capturedHours=0;
+    let newLot=null,releasing=null,depositToday=false,captureNext=false,todayBonuses=null,capturedHours=0,capturedAccrual=null;
     if(useDelayed){
       openExpH+=grossExpH;
-      if(accrualToPayout.has(ds))newLot={payout:accrualToPayout.get(ds),amount:new Float64Array(nSims),hours:openExpH};
+      if(accrualToPayout.has(ds))newLot={accrual:ds,payout:accrualToPayout.get(ds),amount:new Float64Array(nSims),hours:openExpH};
       releasing=[];
       for(const lot of lots)if(lot.payout===ds)releasing.push(lot);
       if(newLot&&newLot.payout===ds)releasing.push(newLot);
       depositToday=releasing.length>0;
       if(depositToday)payDayDates.push(ds);
       captureNext=depositToday&&!nextSalary&&ds>=ref;
-      if(captureNext){todayBonuses=new Float64Array(nSims);capturedHours=releasing.reduce((s,l)=>s+l.hours,0)}
+      if(captureNext){
+        todayBonuses=new Float64Array(nSims);
+        capturedHours=releasing.reduce((s,l)=>s+l.hours,0);
+        capturedAccrual=releasing.reduce((latest,l)=>!latest||l.accrual>latest?l.accrual:latest,null);
+      }
     }
     const fcWi=dayToFcWeek[di];
     let runSum=0;
@@ -837,7 +841,7 @@ function forecastSavings(es,rate,exs,incs,cps,payDays,end,nSims,seed,opts){
       const sb=Float64Array.from(todayBonuses).sort();
       const taxSamples=Float64Array.from(todayBonuses,value=>value*taxRate).sort();
       nextSalary={
-        date:ds,mean:sb.reduce((a,b)=>a+b,0)/nSims,
+        date:ds,accrual:capturedAccrual,mean:sb.reduce((a,b)=>a+b,0)/nSims,
         median:sb[Math.floor(.5*nSims)],
         p10:sb[Math.floor(.1*nSims)],
         p90:sb[Math.floor(.9*nSims)],

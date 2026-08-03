@@ -21,7 +21,12 @@ function buildForecastEvents(r,leftLimit,endDate){
     return fcEventCache.events;
   const events=new Map();
   const range=dateRange(leftLimit,endDate);
-  for(const expense of state.expenses){
+  if(r.expenseEvents){
+    for(const expense of r.expenseEvents)addForecastEvent(events,expense.date,{
+      type:'expense',title:'Расходы по правилам',amount:expense.amount,
+      background:!r.expDays.includes(expense.date)
+    },leftLimit,endDate);
+  }else for(const expense of state.expenses){
     if(expense.kind==='once'){
       addForecastEvent(events,expense.date,{
         type:'expense',title:expense.name||'Разовый расход',
@@ -49,12 +54,17 @@ function buildForecastEvents(r,leftLimit,endDate){
     type:'income',title:income.name||'Пополнение',amount:Number(income.amount)||0
   },leftLimit,endDate);
 
-  const schedule=paySchedule(state.payDays);
-  const payEvents=schedule.length
-    ?effectivePayEvents(leftLimit,endDate,schedule,state.payDayActuals,state.pendingPayAccrual)
-    :[];
-  const earned=payPeriodEarned(state.entries,payEvents,state.rate);
-  for(const event of payEvents){
+  if(r.incomeEvents){
+    for(const event of r.incomeEvents)addForecastEvent(events,event.date,{
+      type:'payout',title:event.type==='salary'?'Выплата оклада':event.type==='mixed'?'Оклад и почасовой остаток':'Выплата почасового дохода',amount:event.amount
+    },leftLimit,endDate);
+  }else{
+    const schedule=paySchedule(state.payDays);
+    const payEvents=schedule.length
+      ?effectivePayEvents(leftLimit,endDate,schedule,state.payDayActuals,state.pendingPayAccrual)
+      :[];
+    const earned=payPeriodEarned(state.entries,payEvents,state.rate);
+    for(const event of payEvents){
     const period=earned.get(event.accrual);
     const known=event.accrual<=today()&&period;
     addForecastEvent(events,event.accrual,{
@@ -65,6 +75,7 @@ function buildForecastEvents(r,leftLimit,endDate){
       type:'payout',title:'Выплата зарплаты',
       amount:known?Number(period.gross)||0:null
     },leftLimit,endDate);
+    }
   }
 
   const targetProb=new Map((r.targetReachProb||[]).map(item=>[item.date,item.prob]));

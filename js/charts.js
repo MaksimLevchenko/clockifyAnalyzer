@@ -198,7 +198,7 @@ function setCardEmpty(cardId,msg){
 
 function renderMonthlyStats(){
   const card=document.getElementById('card-monthly-stats');if(!card)return;
-  const monthly=state.entries.length?monthlyAgg(state.entries):[];
+  const monthly=state.entries.length?monthlyAgg(state.entries,state.incomeModels):[];
   if(!monthly.length){card.style.display='none';return}
   card.style.display='';
   const c=esc(cur());
@@ -215,9 +215,9 @@ function drawAllCharts(){
   drawBalanceChart();
   renderMonthlyStats();
   const es=state.entries;
-  const daily=es.length?dailyAgg(es):[];
-  const monthly=es.length?monthlyAgg(es):[];
-  const projects=es.length?projectAgg(es,8):[];
+  const daily=es.length?dailyAgg(es,state.incomeModels):[];
+  const monthly=es.length?monthlyAgg(es,state.incomeModels):[];
+  const projects=es.length?projectAgg(es,8,state.incomeModels):[];
   const c=esc(cur());
   const shortLab=daily.map(d=>dateRu(d.date));
   let timeOn=0,distOn=0;
@@ -349,9 +349,11 @@ function drawMonthlyForecast(r){
       const seenDates=new Set();
       for(const e of state.entries){
         if(e.date.slice(0,7)===k&&e.date<=r.startDate){
-          v.workAct+=e.hours*e.rate;seenDates.add(e.date);
+          seenDates.add(e.date);
         }
       }
+      for(const item of dailyAgg(state.entries,state.incomeModels))
+        if(item.date.slice(0,7)===k&&item.date<=r.startDate)v.workAct+=item.amount;
       v.daysAct=seenDates.size;
     }
     v.workTotal=v.workAct+v.workFc;

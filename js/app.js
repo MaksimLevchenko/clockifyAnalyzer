@@ -129,7 +129,7 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
     if(k==='currency')state.currency=el.value||'USD';
     if(k==='halfLife')state.halfLife=Math.max(7,Math.min(365,parseInt(el.value)||60));
     if(k==='taxRate')state.taxRate=Math.max(0,Math.min(100,parseFloat(el.value)||0));
-    saveState();renderTicker();renderDataStats();renderCheckpoints();renderIncomes();renderExpenses();renderActualExpenses();renderHomePayday();
+    saveState();renderTicker();renderDataStats();renderCheckpoints();renderIncomes();renderExpenses();renderActualExpenses();renderHomePayday();renderIncomeModels();
     if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
   });
 });
@@ -143,6 +143,8 @@ function syncInputs(){
     document.getElementById('fc-end').value=addDays(anchorDate(),90);
   const cpD=document.getElementById('cp-date');if(!cpD.value)cpD.value=today();
   const incD=document.getElementById('inc-date');if(!incD.value)incD.value=today();
+  const exStart=document.getElementById('ex-start');if(exStart&&!exStart.value)exStart.value=today();
+  const imRate=document.getElementById('im-rate');if(imRate&&!document.getElementById('im-form-shell').open)imRate.value=state.rate;
 }
 
 function renderDataStats(){
@@ -151,12 +153,13 @@ function renderDataStats(){
     box.innerHTML='<div class="empty"><div class="big">Нет данных</div>Импортируй отчёт Clockify (CSV или PDF), чтобы начать.</div>';
     return;
   }
-  const daily=dailyAgg(es);
+  const daily=dailyAgg(es,state.incomeModels);
+  const workDays=new Set(es.map(entry=>entry.date)).size;
   const totalH=es.reduce((a,e)=>a+e.hours,0);
-  const totalA=es.reduce((a,e)=>a+e.hours*e.rate,0);
+  const totalA=daily.reduce((a,e)=>a+e.amount,0);
   box.innerHTML=`
     <div class="stat"><div class="k">Записей</div><div class="v">${es.length}</div></div>
-    <div class="stat"><div class="k">Рабочих дней</div><div class="v">${daily.length}</div></div>
+    <div class="stat"><div class="k">Рабочих дней</div><div class="v">${workDays}</div></div>
     <div class="stat"><div class="k">Всего часов</div><div class="v">${totalH.toFixed(1)}</div></div>
     <div class="stat"><div class="k">Доход всего</div><div class="v green">${fmt(totalA)} ${esc(cur())}</div></div>
     <div class="stat"><div class="k">Период</div><div class="v" style="font-size:14px">${esc(es[0].date)} → ${esc(es[es.length-1].date)}</div></div>`;
@@ -165,9 +168,11 @@ function renderDataStats(){
 function renderTicker(){
   const es=state.entries;const t=document.getElementById('ticker');
   if(!es.length&&!state.checkpoints.length){t.textContent='нет данных';return}
-  const totalA=es.reduce((a,e)=>a+e.hours*e.rate,0);
+  const totalA=dailyAgg(es,state.incomeModels).reduce((a,e)=>a+e.amount,0);
   const c=esc(cur());const bal=currentBalance();const ad=anchorDate();
-  t.innerHTML=`баланс <b>${fmt(bal)} ${c}</b> <span style="color:var(--faint)">на ${esc(ad.split('-').reverse().join('.'))}</span> · доход <b>${fmt(totalA)} ${c}</b> · ставка <b>${fmt(state.rate)}</b>`;
+  const model=incomeModelAt(state.incomeModels,today());
+  const metric=model.type==='salary'?`оклад <b>${fmt(model.monthlySalary)} ${c}</b>`:`ставка <b>${fmt(model.rate)}</b>`;
+  t.innerHTML=`баланс <b>${fmt(bal)} ${c}</b> <span style="color:var(--faint)">на ${esc(ad.split('-').reverse().join('.'))}</span> · доход <b>${fmt(totalA)} ${c}</b> · ${metric}`;
 }
 
 /* ========================= WORK TAB ========================= */
@@ -231,7 +236,7 @@ document.getElementById('ad-add').addEventListener('click',()=>{
 
 function renderWork(){
   const es=state.entries;const tb=document.querySelector('#work-table tbody');
-  const totalH=es.reduce((a,e)=>a+e.hours,0),totalA=es.reduce((a,e)=>a+e.hours*e.rate,0);
+  const totalH=es.reduce((a,e)=>a+e.hours,0),totalA=dailyAgg(es,state.incomeModels).reduce((a,e)=>a+e.amount,0);
   document.getElementById('work-summary').innerHTML=es.length
     ?`Всего ${es.length} записей · ${totalH.toFixed(1)} ч · <b>${fmt(totalA)} ${esc(cur())}</b>. Показаны последние 50.`
     :'Записей нет.';
@@ -244,7 +249,7 @@ function renderWork(){
       <td>${esc(e.project)}</td>
       <td class="num">${e.hours.toFixed(2)}</td>
       <td class="num">${fmt(e.rate)}</td>
-      <td class="num">${fmt(e.hours*e.rate)}</td>
+      <td class="num">${fmt(entryIncomeAmount(e,state.incomeModels))}</td>
       <td><button class="btn ghost sm" data-eidx="${i}" title="Редактировать / удалить">✎</button></td>
     </tr>`);
   }
@@ -305,19 +310,31 @@ document.getElementById('ex-kind').addEventListener('change',function(){
   const k=this.value;
   document.getElementById('ex-day-field').style.display=k==='monthly'?'':'none';
   document.getElementById('ex-date-field').style.display=k==='once'?'':'none';
+  document.getElementById('ex-start-field').style.display=k==='once'?'none':'';
   /* Growth rate is meaningless for ONCE — known amount on known date.
      Hide the input to avoid user confusion. */
   const grField=document.getElementById('ex-grow-field');
   if(grField)grField.style.display=k==='once'?'none':'';
+  const base=document.getElementById('ex-percent-base');
+  base.querySelector('[value="payment"]').disabled=k==='daily';
+  if(k==='daily'&&base.value==='payment')base.value='monthlyIncome';
+});
+
+document.getElementById('ex-amount-mode').addEventListener('change',function(){
+  const percent=this.value==='percent';
+  document.getElementById('ex-percent-base-field').hidden=!percent;
+  document.getElementById('ex-amt-label').textContent=percent?'Процент, %':'Сумма';
 });
 
 document.getElementById('ex-add').addEventListener('click',()=>{
   const kind=document.getElementById('ex-kind').value;
   const name=document.getElementById('ex-name').value||'Расход';
   const amt=parseFloat(document.getElementById('ex-amt').value)||0;
+  const amountMode=document.getElementById('ex-amount-mode').value;
   const grEl=document.getElementById('ex-grow');
   const growthRate=grEl?Math.max(-50,Math.min(100,parseFloat(grEl.value)||0)):0;
-  const e={kind,name,amount:amt,growthRate};
+  const e={kind,name,amount:amountMode==='fixed'?amt:0,percent:amountMode==='percent'?amt:0,
+    amountMode,percentBase:document.getElementById('ex-percent-base').value,growthRate};
   if(kind==='monthly'){
     e.day=Math.min(28,Math.max(1,parseInt(document.getElementById('ex-day').value)||1));
   }else if(kind==='daily'){
@@ -327,6 +344,8 @@ document.getElementById('ex-add').addEventListener('click',()=>{
     if(!d){toast('Укажи дату');return}
     e.date=d;
   }
+  e.startDate=kind==='once'?e.date:document.getElementById('ex-start').value;
+  if(!e.startDate){toast('Укажи дату начала');return}
   state.expenses.push(e);saveState();renderExpenses();renderActualExpenses();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
   toast('Расход добавлен');
@@ -336,20 +355,26 @@ function expenseKindLabel(k){return k==='monthly'?'ежемес.':k==='daily'?'�
 function expenseKindPill(k){return k==='monthly'?'m':k==='daily'?'d':'o'}
 function expenseWhen(e){
   if(e.kind==='monthly')return e.day+' число';
-  if(e.kind==='daily')return `каждый день · ≈${fmt(Number(e.amount)/30)} ${esc(cur())}/день`;
+  if(e.kind==='daily')return e.amountMode==='percent'?'равномерно по дням':`каждый день · ≈${fmt(Number(e.amount)/30)} ${esc(cur())}/день`;
   return esc(e.date.split('-').reverse().join('.'));
+}
+
+function expenseBaseLabel(base){
+  return base==='payment'?'от выплаты в этот день':base==='balance'?'от баланса':'от месячного дохода';
 }
 
 function renderExpenses(){
   const tb=document.querySelector('#ex-table tbody');const ex=state.expenses;const c=esc(cur());
   let mo=0,dl=0;
   ex.forEach(e=>{
+    if(e.amountMode==='percent'||!expenseActiveOnDate(e,today()))return;
     if(e.kind==='monthly')mo+=Number(e.amount);
     else if(e.kind==='daily')dl+=Number(e.amount);
   });
   const total=mo+dl;
+  const percentCount=ex.filter(e=>e.amountMode==='percent'&&expenseActiveOnDate(e,today())).length;
   document.getElementById('ex-summary').innerHTML=ex.length
-    ?`Ежемесячные расходы: <b>${fmt(total)} ${c}/мес</b>`+(dl?` <small class="note">(из них ${fmt(dl)} равномерно по дням)</small>`:'')
+    ?`Активные фиксированные: <b>${fmt(total)} ${c}/мес</b>`+(percentCount?` · процентных правил: <b>${percentCount}</b>`:'')
     :'Расходов пока нет.';
   tb.innerHTML=ex.map((e,i)=>{
     const g=Number(e.growthRate||0);
@@ -358,18 +383,37 @@ function renderExpenses(){
     const grCell=isOnce
       ?`<span class="note" title="Разовая трата не индексируется">—</span>`
       :`<input type="number" step="0.5" value="${g}" data-exgrow="${i}" style="width:70px" title="Годовой рост, %">`;
+    const size=e.amountMode==='percent'
+      ?`${fmt(e.percent)}% <span class="note">${expenseBaseLabel(e.percentBase)}</span>`
+      :`${fmt(e.amount)} ${c}${e.kind==='daily'?' /мес':''}`;
+    const start=e.startDate||(isOnce?e.date:INCOME_MODEL_ORIGIN);
+    const period=isOnce?dateRu(e.date,true)
+      :`${start===INCOME_MODEL_ORIGIN?'с начала истории':`с ${dateRu(start,true)}`}${e.endDate?` · по ${dateRu(e.endDate,true)}`:''}`;
+    const stop=!isOnce&&!e.endDate?`<div class="expense-stop"><input type="date" value="${today()}" data-ex-stop-date="${i}" aria-label="Дата остановки"><button class="btn quiet sm" data-ex-stop="${i}">остановить</button></div>`:'';
     return `<tr>
       <td><span class="pill ${expenseKindPill(e.kind)}">${expenseKindLabel(e.kind)}</span></td>
       <td>${esc(e.name)}${grLabel}</td>
-      <td class="num">${fmt(e.amount)} ${c}${e.kind==='daily'?' /мес':''}</td>
+      <td class="num">${size}</td>
       <td>${expenseWhen(e)}</td>
+      <td>${period}</td>
       <td>${grCell}</td>
-      <td><button class="btn terra sm" data-del="${i}">удалить</button></td>
+      <td>${stop}<button class="btn terra sm" data-del="${i}">удалить</button></td>
     </tr>`;
   }).join('');
   tb.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{
+    if(!confirm('Удалить правило целиком? Его прошлое влияние тоже исчезнет из расчётов.'))return;
     state.expenses.splice(+b.dataset.del,1);saveState();renderExpenses();renderActualExpenses();
     if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+  }));
+  tb.querySelectorAll('[data-ex-stop]').forEach(button=>button.addEventListener('click',()=>{
+    const index=+button.dataset.exStop;
+    const stopDate=tb.querySelector(`[data-ex-stop-date="${index}"]`).value;
+    if(!stopDate){toast('Укажи дату остановки');return}
+    const expense=state.expenses[index];
+    if(stopDate<=expense.startDate){toast('Дата остановки должна быть позже даты начала');return}
+    expense.endDate=addDays(stopDate,-1);saveState();renderExpenses();renderActualExpenses();
+    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+    toast(`Правило остановлено с ${dateRu(stopDate,true)}. Прошлые списания сохранены.`);
   }));
   tb.querySelectorAll('[data-exgrow]').forEach(inp=>inp.addEventListener('change',()=>{
     const i=+inp.dataset.exgrow;
@@ -385,13 +429,15 @@ function renderActualExpenses(){
   const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
     excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
     payDays:state.payDays,payDayActuals:state.payDayActuals,
-    pendingPayAccrual:state.pendingPayAccrual
+    pendingPayAccrual:state.pendingPayAccrual,incomeModels:state.incomeModels,
+    useIncomeTimeline:state.incomeModels.length>1||state.expenses.some(e=>e.amountMode==='percent')
   });
   if(!cf){card.style.display='none';return}
   card.style.display='';
   const c=esc(cur());
   const ae=autoExpenseEstimate(cf);
   const manualMonthly=state.expenses.reduce((s,e)=>{
+    if(e.amountMode==='percent'||!expenseActiveOnDate(e,today()))return s;
     if(e.kind==='monthly')return s+Number(e.amount);
     if(e.kind==='daily')return s+Number(e.amount);
     return s;
@@ -621,7 +667,9 @@ function renderForecastUnavailable(message){
 function runForecast(auto){
   const end=document.getElementById('fc-end').value;
   if(!end){if(!auto)toast('Укажи дату прогноза');return}
-  if(!state.entries.length){
+  const useIncomeTimeline=state.incomeModels.length>1||state.expenses.some(e=>e.amountMode==='percent');
+  const hasSalary=state.incomeModels.some(model=>model.type==='salary');
+  if(!state.entries.length&&!hasSalary){
     renderForecastUnavailable('Импортируй отчёт о работе, чтобы рассчитать будущий доход.');
     if(!auto)toast('Сначала импортируй данные');
     return;
@@ -635,12 +683,12 @@ function runForecast(auto){
     const cf=cashFlowFromCheckpoints(state.entries,state.expenses,state.incomes,state.checkpoints,{
       excluded:state.cashflowExcluded,taxRate:state.taxRate,fallbackRate:state.rate,
       payDays:state.payDays,payDayActuals:state.payDayActuals,
-      pendingPayAccrual:state.pendingPayAccrual
+      pendingPayAccrual:state.pendingPayAccrual,incomeModels:state.incomeModels,useIncomeTimeline
     });
     const ae=autoExpenseEstimate(cf);
     const anchorEl=document.getElementById('fc-anchor');
     const anchorDate=anchorEl&&anchorEl.value?anchorEl.value:null;
-    const r=forecastSavings(state.entries,state.rate,state.expenses,state.incomes,state.checkpoints,state.payDays,end,5000,7,{
+    const forecastOptions={
       halfLife:state.halfLife,
       taxRate:state.taxRate,
       vacations:state.vacations,
@@ -648,13 +696,17 @@ function runForecast(auto){
       pendingPayAccrual:state.pendingPayAccrual,
       anchorDate,
       autoMonthlyRates:ae?ae.sampleRates:null,
-      autoMonthlyDurations:ae?ae.sampleDurations:null
-    });
+      autoMonthlyDurations:ae?ae.sampleDurations:null,
+      incomeModels:state.incomeModels
+    };
+    const r=useIncomeTimeline
+      ?forecastSavingsTimeline(state.entries,state.expenses,state.incomes,state.checkpoints,end,5000,7,forecastOptions)
+      :forecastSavings(state.entries,state.rate,state.expenses,state.incomes,state.checkpoints,state.payDays,end,5000,7,forecastOptions);
     r.cashFlow=cf;r.autoEstimate=ae;
     r.past=reconstructPastBalance(state.entries,state.expenses,state.incomes,state.checkpoints,{
       taxRate:state.taxRate,fallbackRate:state.rate,anchorDate:r.startDate,
       payDays:state.payDays,payDayActuals:state.payDayActuals,
-      pendingPayAccrual:state.pendingPayAccrual
+      pendingPayAccrual:state.pendingPayAccrual,incomeModels:state.incomeModels,useIncomeTimeline
     });
     lastFc=r;
     document.getElementById('fc-chart-shell').classList.remove('is-empty');
@@ -681,6 +733,19 @@ function renderAnchorSelector(r){
 function renderModelTable(r){
   const tb=document.querySelector('#model-table tbody');if(!tb)return;
   const c=esc(cur());const m=r.model;
+  const head=document.querySelector('#model-table thead tr');
+  if(m.timeline){
+    head.innerHTML='<th>Период</th><th>Тип</th><th class="num">Метрика</th><th>Выплаты</th><th class="num">Налог</th><th class="num">Вес истории</th>';
+    tb.innerHTML=r.incomeModels.map((model,index)=>{
+      const end=incomeModelEnd(r.incomeModels,index);
+      const period=index===0?`до ${end?dateRu(end,true):'∞'}`:`${dateRu(model.effectiveFrom,true)} — ${end?dateRu(end,true):'∞'}`;
+      const metric=model.type==='salary'?`${fmt(model.monthlySalary)} ${c}/мес`:`${fmt(model.rate)} ${c}/ч`;
+      const payments=model.payments.length?model.payments.map(rule=>incomePaymentText(model,rule)).join('<br>'):'ежедневно';
+      return `<tr><td>${period}</td><td>${incomeModelLabel(model)}</td><td class="num">${metric}</td><td>${payments}</td><td class="num">${fmt(model.taxRate)}%</td><td class="num">${model.halfLife} дн.</td></tr>`;
+    }).join('');
+    return;
+  }
+  head.innerHTML='<th>День</th><th class="num">% дней с работой</th><th class="num">Часы в рабочий день</th><th class="num">Ожидаемые часы</th><th class="num">Ожидаемый доход</th><th class="num">Дней в истории</th>';
   const totalExp=m.expH.reduce((a,b)=>a+b,0);
   const totalSamples=m.sampleSizes.reduce((a,b)=>a+b,0);
   const taxPct=(r.taxRate||0)*100;
@@ -934,12 +999,12 @@ document.addEventListener('click',e=>{
 function afterDataChange(opts){
   if(opts&&opts.silent)saveStateRaw();
   else saveState();
-  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPaydayViews();renderSync();
+  renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPaydayViews();renderIncomeModels();renderSync();
   if(document.getElementById('panel-charts').classList.contains('active'))drawAllCharts();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 
-syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPaydayViews();renderSync();
+syncInputs();renderTicker();renderDataStats();renderWork();renderExpenses();renderActualExpenses();renderVacations();renderCheckpoints();renderIncomes();renderPaydayViews();renderIncomeModels();renderSync();
 switchTab(location.hash.slice(1));
 maybeAutoPull();
 

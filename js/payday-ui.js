@@ -1,5 +1,6 @@
 function afterPayDaysChange(){
   renderActualExpenses();
+  renderIncomeModels();
   if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
 }
 

@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="js/theme.js?v=20260727-theme1"></script>
-<link rel="stylesheet" href="styles.css?v=20260803-rounded-pay1">
+<link rel="stylesheet" href="styles.css?v=20260803-income-timeline1">
 </head>
 <body>
 <div class="app-shell">
@@ -218,19 +218,24 @@
           <div class="form-stack">
             <div class="field"><label for="ex-kind">Тип</label><select id="ex-kind"><option value="monthly">Ежемесячный в выбранный день</option><option value="daily">Равномерно в течение месяца</option><option value="once">Разовый</option></select></div>
             <div class="field"><label for="ex-name">Название</label><input type="text" id="ex-name" placeholder="Аренда"></div>
-            <div class="field"><label for="ex-amt">Сумма</label><input type="number" id="ex-amt" step="0.01" value="0"></div>
+            <div class="form-pair">
+              <div class="field"><label for="ex-amount-mode">Расчёт</label><select id="ex-amount-mode"><option value="fixed">Фиксированная сумма</option><option value="percent">Процент</option></select></div>
+              <div class="field"><label for="ex-amt" id="ex-amt-label">Сумма</label><input type="number" id="ex-amt" min="0" step="0.01" value="0"></div>
+            </div>
+            <div class="field" id="ex-percent-base-field" hidden><label for="ex-percent-base">База процента</label><select id="ex-percent-base"><option value="monthlyIncome">Месячный доход активной модели</option><option value="payment">Выплата в этот день</option><option value="balance">Баланс перед списанием</option></select></div>
             <div class="form-pair">
               <div class="field" id="ex-grow-field"><label for="ex-grow">Рост в год, %</label><input type="number" id="ex-grow" step="0.5" value="0"></div>
               <div class="field" id="ex-day-field"><label for="ex-day">День месяца</label><input type="number" id="ex-day" min="1" max="28" value="1"></div>
               <div class="field" id="ex-date-field" style="display:none"><label for="ex-date">Дата</label><span class="date-wrap"><input type="date" id="ex-date"><button type="button" class="btn quiet sm date-today" data-for="ex-date" tabindex="-1">сегодня</button></span></div>
             </div>
+            <div class="field" id="ex-start-field"><label for="ex-start">Действует с</label><span class="date-wrap"><input type="date" id="ex-start"><button type="button" class="btn quiet sm date-today" data-for="ex-start" tabindex="-1">сегодня</button></span></div>
             <button class="btn primary" id="ex-add">Добавить расход</button>
           </div>
         </div>
 
         <div class="card">
           <div class="card-heading"><h2>Запланированные расходы</h2><div id="ex-summary" class="inline-summary"></div></div>
-          <div class="scroll tall-scroll"><table id="ex-table"><thead><tr><th>Тип</th><th>Название</th><th class="num">Сумма</th><th>Когда</th><th class="num">Рост</th><th></th></tr></thead><tbody></tbody></table></div>
+          <div class="scroll tall-scroll"><table id="ex-table"><thead><tr><th>Тип</th><th>Название</th><th class="num">Размер</th><th>Когда</th><th>Действует</th><th class="num">Рост</th><th></th></tr></thead><tbody></tbody></table></div>
         </div>
       </div>
 
@@ -353,7 +358,7 @@
       </header>
 
       <div class="card">
-        <div class="card-heading"><h2>Доход и модель</h2></div>
+        <div class="card-heading"><h2>Базовая почасовая модель</h2><p>Действует до первого перехода. Её история и расчёты сохраняются.</p></div>
         <div class="settings-grid">
           <div class="field"><label for="in-rate">Ставка в час</label><input type="number" id="in-rate" step="0.01"></div>
           <div class="field"><label for="in-currency">Валюта</label><input type="text" id="in-currency" maxlength="6"></div>
@@ -362,8 +367,42 @@
         </div>
       </div>
 
+      <div class="card income-timeline-card">
+        <div class="card-heading split-heading">
+          <div><p class="eyebrow">Версии по датам</p><h2>Модель дохода</h2><p>Новая версия начинает действовать в выбранную дату. Предыдущая автоматически заканчивается накануне.</p></div>
+          <span class="timeline-key" aria-hidden="true">↦</span>
+        </div>
+        <div id="im-list" class="income-timeline"></div>
+        <details class="income-transition" id="im-form-shell">
+          <summary>Добавить переход <span>＋</span></summary>
+          <div class="form-stack">
+            <div class="form-pair">
+              <div class="field"><label for="im-date">Действует с</label><input type="date" id="im-date"></div>
+              <div class="field"><label for="im-type">Тип дохода</label><select id="im-type"><option value="hourly">Почасовой</option><option value="salary">Окладный</option></select></div>
+            </div>
+            <div class="settings-grid">
+              <div class="field" id="im-rate-field"><label for="im-rate">Ставка в час</label><input type="number" id="im-rate" min="0" step="0.01"></div>
+              <div class="field" id="im-salary-field" hidden><label for="im-salary">Месячный оклад</label><input type="number" id="im-salary" min="0" step="0.01"></div>
+              <div class="field"><label for="im-half-life">Вес свежей истории, дней</label><input type="number" id="im-half-life" min="7" max="365" step="1" value="60"></div>
+              <div class="field"><label for="im-tax">Налог работодателя, %</label><input type="number" id="im-tax" min="0" max="100" step="0.5" value="0"></div>
+            </div>
+            <fieldset class="payment-builder">
+              <legend>Выплаты версии</legend>
+              <div class="form-strip">
+                <div class="field"><label for="im-pay-day">День месяца</label><input type="number" id="im-pay-day" min="1" max="28" value="1"></div>
+                <div class="field salary-payment-field" hidden><label for="im-pay-mode">Как задать</label><select id="im-pay-mode"><option value="percent">Процент оклада</option><option value="amount">Фиксированная сумма</option></select></div>
+                <div class="field salary-payment-field" hidden><label for="im-pay-value">Значение</label><input type="number" id="im-pay-value" min="0" step="0.01" value="100"></div>
+                <button type="button" class="btn secondary" id="im-pay-add">Добавить день</button>
+              </div>
+              <div id="im-pay-list" class="payment-draft"></div>
+            </fieldset>
+            <div class="row"><button type="button" class="btn primary" id="im-add">Сохранить переход</button><small class="note" id="im-total"></small></div>
+          </div>
+        </details>
+      </div>
+
       <div class="card">
-        <div class="card-heading"><h2>Расписание зарплаты</h2><p>День зарплаты закрывает период часов и по умолчанию является датой прихода денег.</p></div>
+        <div class="card-heading"><h2>Базовое расписание почасовой модели</h2><p>День зарплаты закрывает период часов и по умолчанию является датой прихода денег.</p></div>
         <div id="pd-list" class="row"></div>
         <div class="row section-actions"><button class="btn secondary sm" id="pd-add">Добавить день зарплаты</button><small class="note">До четырёх дней, значения 1–28.</small></div>
         <div class="subsection">
@@ -436,16 +475,19 @@
   <div class="dialog-actions"><button class="btn danger" id="ed-delete">Удалить</button><span class="spacer"></span><button class="btn primary" id="ed-save">Сохранить</button></div>
 </dialog>
 
-<script src="js/core.js?v=20260731-salary-cutoff1"></script>
-<script src="js/state.js"></script>
+<script src="js/core.js?v=20260803-income-timeline1"></script>
+<script src="js/income-models.js?v=20260803-income-timeline1"></script>
+<script src="js/timeline-forecast.js?v=20260803-income-timeline1"></script>
+<script src="js/state.js?v=20260803-income-timeline1"></script>
 <script src="js/ui.js?v=20260725-redesign5"></script>
-<script src="js/charts.js?v=20260725-redesign6"></script>
-<script src="js/forecast-chart-events.js"></script>
+<script src="js/charts.js?v=20260803-income-timeline1"></script>
+<script src="js/forecast-chart-events.js?v=20260803-income-timeline1"></script>
 <script src="js/forecast-chart-controls.js"></script>
 <script src="js/forecast-chart.js"></script>
-<script src="js/forecast-summary.js?v=20260803-rounded-pay2"></script>
+<script src="js/forecast-summary.js?v=20260803-income-timeline1"></script>
 <script src="js/sync.js"></script>
-<script src="js/payday-ui.js?v=20260803-rounded-pay1"></script>
-<script src="js/app.js?v=20260725-redesign5"></script>
+<script src="js/payday-ui.js?v=20260803-income-timeline1"></script>
+<script src="js/income-model-ui.js?v=20260803-income-timeline1"></script>
+<script src="js/app.js?v=20260803-income-timeline1"></script>
 </body>
 </html>

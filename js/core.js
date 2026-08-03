@@ -223,29 +223,54 @@ function mergeEntries(o,n){
 function detectRate(es){const nz=es.filter(e=>e.rate>0);return nz.length?nz[nz.length-1].rate:0}
 
 /* ----- aggregation & model ----- */
-function dailyAgg(es){
+function entryIncomeAmount(entry,models){
+  if(!models||!models.length)return (Number(entry.hours)||0)*(Number(entry.rate)||0);
+  const model=incomeModelAt(models,entry.date);
+  if(model.type==='salary')return 0;
+  const rate=model.effectiveFrom==='0001-01-01'&&Number(entry.rate)>0
+    ?Number(entry.rate):Number(model.rate)||0;
+  return(Number(entry.hours)||0)*rate;
+}
+
+function dailyAgg(es,models){
   const m=new Map();
-  for(const e of es){const c=m.get(e.date)||{hours:0,amount:0};c.hours+=e.hours;c.amount+=e.hours*e.rate;m.set(e.date,c)}
+  for(const e of es){const c=m.get(e.date)||{hours:0,amount:0};c.hours+=e.hours;c.amount+=entryIncomeAmount(e,models);m.set(e.date,c)}
+  if(models&&models.length>1&&es.length){
+    const start=es.reduce((a,b)=>a.date<b.date?a:b).date;
+    const end=today();
+    if(start<=end)for(const date of dateRange(start,end)){
+      const amount=salaryPaymentOnDate(incomeModelAt(models,date),date);if(!amount)continue;
+      const c=m.get(date)||{hours:0,amount:0};c.amount+=amount;m.set(date,c);
+    }
+  }
   return[...m.entries()].map(([date,v])=>({date,...v})).sort((a,b)=>a.date<b.date?-1:1);
 }
 
-function monthlyAgg(es){
+function monthlyAgg(es,models){
   const m=new Map();
   for(const e of es){
     const key=e.date.slice(0,7);
     const c=m.get(key)||{hours:0,amount:0,days:new Set()};
-    c.hours+=e.hours;c.amount+=e.hours*e.rate;c.days.add(e.date);
+    c.hours+=e.hours;c.amount+=entryIncomeAmount(e,models);c.days.add(e.date);
     m.set(key,c);
+  }
+  if(models&&models.length>1&&es.length){
+    const start=es.reduce((a,b)=>a.date<b.date?a:b).date,end=today();
+    if(start<=end)for(const date of dateRange(start,end)){
+      const amount=salaryPaymentOnDate(incomeModelAt(models,date),date);if(!amount)continue;
+      const key=date.slice(0,7),c=m.get(key)||{hours:0,amount:0,days:new Set()};
+      c.amount+=amount;m.set(key,c);
+    }
   }
   return[...m.entries()].map(([month,v])=>({month,hours:v.hours,amount:v.amount,days:v.days.size})).sort((a,b)=>a.month<b.month?-1:1);
 }
 
-function projectAgg(es,cap){
+function projectAgg(es,cap,models){
   const m=new Map();
   for(const e of es){
     const k=e.project||'(без проекта)';
     const c=m.get(k)||{hours:0,amount:0};
-    c.hours+=e.hours;c.amount+=e.hours*e.rate;
+    c.hours+=e.hours;c.amount+=entryIncomeAmount(e,models);
     m.set(k,c);
   }
   const all=[...m.entries()].map(([project,v])=>({project,...v})).sort((a,b)=>b.amount-a.amount);
@@ -373,12 +398,25 @@ function makeWeightedSampler(indices,weights){
   };
 }
 
-function expenseAmountOnDate(x,ds,baseDate){
+function expenseActiveOnDate(x,ds){
+  const start=x.startDate||(x.kind==='once'?x.date:'0001-01-01');
+  return (!start||ds>=start)&&(!x.endDate||ds<=x.endDate);
+}
+
+function expenseAmountOnDate(x,ds,baseDate,bases){
+  if(!expenseActiveOnDate(x,ds))return 0;
   const recurring=x.kind==='monthly'||x.kind==='daily';
   let amount=Number(x.amount)||0;
   if(x.kind==='monthly'&&Number(ds.slice(8,10))!==Number(x.day))return 0;
   if(x.kind==='daily')amount/=daysInMonth(ds);
   if(x.kind==='once'&&x.date!==ds)return 0;
+  if(x.amountMode==='percent'){
+    const values=bases||{};
+    const base=x.percentBase==='payment'?values.payment
+      :x.percentBase==='balance'?values.balance:values.monthlyIncome;
+    amount=(Number(base)||0)*(Number(x.percent)||0)/100;
+    if(x.kind==='daily')amount/=daysInMonth(ds);
+  }
   const growth=recurring&&x.growthRate?Number(x.growthRate)/100:0;
   if(growth&&baseDate)amount*=Math.pow(1+growth,daysBetween(baseDate,ds)/365.25);
   return amount;
@@ -399,13 +437,13 @@ function expandExpenses(exs,s,e,opts){
   for(const x of exs){
     if(x.kind==='monthly'){
       for(const ds of range){
-        const amount=expenseAmountOnDate(x,ds,baseDate);
+        const amount=expenseAmountOnDate(x,ds,baseDate,opts.basesForDate&&opts.basesForDate(ds,x));
         if(amount)m.set(ds,m.get(ds)+amount);
       }
     }else if(x.kind==='daily'){
-      for(const ds of range)m.set(ds,m.get(ds)+expenseAmountOnDate(x,ds,baseDate));
+      for(const ds of range)m.set(ds,m.get(ds)+expenseAmountOnDate(x,ds,baseDate,opts.basesForDate&&opts.basesForDate(ds,x)));
     }else{
-      if(x.date>=s&&x.date<=e)m.set(x.date,(m.get(x.date)||0)+expenseAmountOnDate(x,x.date,baseDate));
+      if(x.date>=s&&x.date<=e)m.set(x.date,(m.get(x.date)||0)+expenseAmountOnDate(x,x.date,baseDate,opts.basesForDate&&opts.basesForDate(x.date,x)));
     }
   }
   return m;
@@ -1008,12 +1046,28 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   const incByDay=new Map();
   for(const inc of incs||[])if(inc.date>=firstDate&&inc.date<=anchorDate)
     incByDay.set(inc.date,(incByDay.get(inc.date)||0)+Number(inc.amount));
-  const expMap=expandExpenses(exs||[],firstDate,anchorDate,{baseDate:refDate});
+  const timelineMode=Array.isArray(opts.incomeModels)&&(opts.incomeModels.length>1||opts.useIncomeTimeline);
+  const timelineDeposits=timelineMode?timelineIncomeByDay(es,opts.incomeModels,firstDate,anchorDate):null;
+  const timelineHourlyMonthly=timelineMode?timelineHourlyIncomeByMonth(es,opts.incomeModels):null;
+  const checkpointBalance=date=>{
+    let value=used[0].balance;
+    for(const checkpoint of used){if(checkpoint.date>date)break;value=checkpoint.balance}
+    return value;
+  };
+  const expMap=expandExpenses(exs||[],firstDate,anchorDate,{
+    baseDate:refDate,
+    basesForDate:timelineMode?(date=>{
+      const model=incomeModelAt(opts.incomeModels,date);
+      return{payment:timelineDeposits.get(date)||0,
+        monthlyIncome:model.type==='salary'?model.monthlySalary:(timelineHourlyMonthly.get(date.slice(0,7))||0),
+        balance:checkpointBalance(date)};
+    }):null
+  });
   /* With a pay schedule, income lands on PAYOUT days as steps (period earnings
      deposited then), not spread daily — consistent with the forecast. Without a
      schedule, fall back to daily earned. Endpoints stay pinned to checkpoints. */
   const schedule=paySchedule(opts.payDays);
-  const useDelayed=schedule.length>0;
+  const useDelayed=!timelineMode&&schedule.length>0;
   let depositByDay=null;
   if(useDelayed){
     const events=effectivePayEvents(
@@ -1025,7 +1079,8 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
       const pe=pr.get(ev.accrual);if(pe)depositByDay.set(ev.payout,(depositByDay.get(ev.payout)||0)+pe.gross);
     }
   }
-  const earnedOnDay=d=>useDelayed?(depositByDay.get(d)||0):(earned.get(d)||0);
+  const earnedOnDay=d=>timelineMode?(timelineDeposits.get(d)||0)
+    :useDelayed?(depositByDay.get(d)||0):(earned.get(d)||0);
   const known=d=>earnedOnDay(d)+(incByDay.get(d)||0)-(expMap.get(d)||0);
   const balance=new Array(dates.length);
   balance[0]=used[0].balance;
@@ -1069,7 +1124,8 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
      income is accrued daily and actuals are not used (matches the UI, which
      blocks marking actual dates until pay-day numbers are set). */
   const schedule=paySchedule(opts.payDays);
-  const useDelayed=schedule.length>0;
+  const timelineMode=Array.isArray(opts.incomeModels)&&(opts.incomeModels.length>1||opts.useIncomeTimeline);
+  const useDelayed=!timelineMode&&schedule.length>0;
   const payActuals=useDelayed&&opts.payDayActuals&&opts.payDayActuals.length?opts.payDayActuals:null;
   const excluded=new Set((opts.excluded||[]).map(x=>x.from+'|'+x.to));
   const sorted=[...cps].filter(c=>(c.kind||'actual')==='actual')
@@ -1086,13 +1142,18 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   const periods=payPeriodEarned(es,events,fallbackRate);
   const paidGross=(from,to)=>{let g=0;for(const ev of events)if(ev.payout&&ev.payout>from&&ev.payout<=to){const pe=periods.get(ev.accrual);if(pe)g+=pe.gross}return g};
   const intervals=[],usedRates=[];
+  const timelineDeposits=timelineMode
+    ?timelineIncomeByDay(es,opts.incomeModels,sorted[0].date,sorted[sorted.length-1].date)
+    :null;
+  const timelineHourlyMonthly=timelineMode?timelineHourlyIncomeByMonth(es,opts.incomeModels):null;
   let totalNetOut=0,totalImplicit=0,totalEarned=0,totalDays=0;
   for(let i=1;i<sorted.length;i++){
     const A=sorted[i-1],B=sorted[i];
     const dur=daysBetween(A.date,B.date);
     if(dur<=0)continue;
     let earnedGross=0;
-    if(useDelayed)earnedGross=paidGross(A.date,B.date);
+    if(timelineMode)for(const [date,amount] of timelineDeposits)if(date>A.date&&date<=B.date)earnedGross+=amount;
+    else if(useDelayed)earnedGross=paidGross(A.date,B.date);
     else for(const e of es||[])if(e.date>A.date&&e.date<=B.date){
       const r=e.rate>0?e.rate:fallbackRate;earnedGross+=e.hours*r;
     }
@@ -1101,7 +1162,15 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
     for(const inc of incs||[])if(inc.date>A.date&&inc.date<=B.date)inIn+=Number(inc.amount);
     /* Use baseDate=refDate so growthRate scales DOWN for past dates —
        historical equivalent of today's entered rent/etc. */
-    const exMap=expandExpenses(exs||[],addDays(A.date,1),B.date,{baseDate:refDate});
+    const exMap=expandExpenses(exs||[],addDays(A.date,1),B.date,{
+      baseDate:refDate,
+      basesForDate:timelineMode?(date=>{
+        const model=incomeModelAt(opts.incomeModels,date);
+        return{payment:timelineDeposits.get(date)||0,
+          monthlyIncome:model.type==='salary'?model.monthlySalary:(timelineHourlyMonthly.get(date.slice(0,7))||0),
+          balance:A.balance};
+      }):null
+    });
     let exOut=0;for(const v of exMap.values())exOut+=v;
     const delta=B.balance-A.balance;
     const netOut=earned+inIn-delta;

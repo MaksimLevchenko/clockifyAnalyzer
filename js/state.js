@@ -50,10 +50,18 @@ function migrate(s){
   s.currency=s.currency||'USD';
   s.halfLife=Number.isFinite(+s.halfLife)?Math.max(7,Math.min(365,+s.halfLife)):60;
   s.taxRate=Number.isFinite(+s.taxRate)?Math.max(0,Math.min(100,+s.taxRate)):0;
+  s.incomeModels=normalizeIncomeModels(s.incomeModels,s);
   s.vacations=Array.isArray(s.vacations)?s.vacations.filter(v=>v&&v.from&&v.to):[];
   s.cashflowExcluded=Array.isArray(s.cashflowExcluded)?s.cashflowExcluded.filter(x=>x&&x.from&&x.to):[];
   for(const c of s.checkpoints)if(!c.kind)c.kind='actual';
-  for(const e of s.expenses)if(e.growthRate==null)e.growthRate=0;
+  for(const e of s.expenses){
+    if(e.growthRate==null)e.growthRate=0;
+    e.amountMode=e.amountMode==='percent'?'percent':'fixed';
+    e.percentBase=['payment','monthlyIncome','balance'].includes(e.percentBase)?e.percentBase:'monthlyIncome';
+    e.percent=Math.max(0,Number(e.percent)||0);
+    if(!e.startDate)e.startDate=e.kind==='once'?e.date:INCOME_MODEL_ORIGIN;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(e.endDate||''))e.endDate=null;
+  }
   if(!s.updatedAt)s.updatedAt=new Date().toISOString();
   delete s.balance;delete s.balanceDate;
   return s;
@@ -65,7 +73,15 @@ function saveStateRaw(){
   try{localStorage.setItem(LS_KEY,JSON.stringify(state))}
   catch(e){toast('Не удалось сохранить в браузере — используй экспорт в файл')}
 }
+function syncLegacyIncomeModel(){
+  const legacy=state.incomeModels&&state.incomeModels.find(model=>model.effectiveFrom===INCOME_MODEL_ORIGIN);
+  if(!legacy)return;
+  legacy.type='hourly';legacy.rate=Number(state.rate)||0;
+  legacy.halfLife=Number(state.halfLife)||60;legacy.taxRate=Number(state.taxRate)||0;
+  legacy.payments=normalizePaymentRules(null,'hourly',state.payDays);
+}
 function saveState(){
+  syncLegacyIncomeModel();
   state.updatedAt=new Date().toISOString();
   saveStateRaw();
   if(typeof schedulePush==='function')schedulePush();

@@ -72,7 +72,7 @@ function renderForecastSummary(r,end){
   const runway=monthlyExpenses>0?r.startBalance/monthlyExpenses:Infinity;
   const nextSalary=r.nextSalary;
   const roundedSalary=nextSalary
-    ?forecastMoneyForRoundedRateHours(nextSalary.expHours,r.rate)
+    ?(nextSalary.incomeType!=='hourly'?nextSalary.mean:forecastMoneyForRoundedRateHours(nextSalary.expHours,r.rate))
     :0;
   const salaryValue=nextSalary
     ?forecastRoundedMoney(nextSalary.mean,roundedSalary,currency,true)
@@ -89,11 +89,11 @@ function renderForecastSummary(r,end){
     :'';
   const unpaidSub=r.unpaidNowHours
     ?`${forecastHoursMinutes(r.unpaidNowHours)} уже отработано${unknownPayout?' · дата выплаты пока не указана':''}${unpaidTax}`
-    :'Нет неоплаченных часов';
+    :(r.incomeType==='salary'?'Оклад не зависит от отработанных часов':'Нет неоплаченных часов');
   const scenarioDate=esc(dateRu(end,true));
 
   const details=[];
-  details.push(forecastDetail('Доход от работы в месяц',forecastMoney(monthlyWork,currency)));
+  details.push(forecastDetail('Доход по модели в месяц',forecastMoney(monthlyWork,currency)));
   if(monthlyExpenses)details.push(forecastDetail('Расходы в месяц',forecastMoney(monthlyExpenses,currency)));
   details.push(forecastDetail('Изменение за месяц',forecastMoney(monthlyNet,currency,true)));
   if(monthlyExpenses){
@@ -109,7 +109,7 @@ function renderForecastSummary(r,end){
 
   const breakdown=[];
   breakdown.push(forecastBreakdownLine(`Баланс на ${esc(dateRu(r.startDate,true))}`,forecastMoney(r.startBalance,currency)));
-  breakdown.push(forecastBreakdownLine('Ожидаемый доход от работы',forecastMoney(r.totalExpectedWork,currency,true)));
+  breakdown.push(forecastBreakdownLine('Ожидаемый доход по модели',forecastMoney(r.totalExpectedWork,currency,true)));
   if(r.initialUnpaid)breakdown.push(forecastBreakdownLine('Ранее заработано и придёт в периоде',forecastMoney(r.initialUnpaid,currency,true)));
   if(r.unpaidAtEnd)breakdown.push(forecastBreakdownLine('Останется невыплаченным к концу',`−${forecastMoney(Math.abs(r.unpaidAtEnd),currency)}`));
   if(r.totalIncomes)breakdown.push(forecastBreakdownLine('Разовые поступления',forecastMoney(r.totalIncomes,currency,true)));

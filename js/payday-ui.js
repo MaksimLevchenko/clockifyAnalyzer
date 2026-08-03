@@ -65,11 +65,27 @@ function clearPendingPayAccrual(){
   refreshPayActuals();
 }
 
-document.getElementById('pda-accrue-today').addEventListener('click',()=>{
-  if(!startPendingPayAccrual(today()))return;
+const todayAccrualDialog=document.getElementById('today-accrual-dialog');
+
+function openTodayAccrualDialog(){
+  document.getElementById('today-accrual-meta').textContent=`Включить часы за ${dateRu(today(),true)} в закрываемый период?`;
+  todayAccrualDialog.showModal();
+}
+
+function accrueThrough(date){
+  if(!startPendingPayAccrual(date))return;
   document.getElementById('pda-payout').value='';
   document.getElementById('pda-accrual').value='';
+  todayAccrualDialog.close();
   refreshPayActuals();
+}
+
+document.getElementById('today-accrual-cancel').addEventListener('click',()=>todayAccrualDialog.close());
+document.getElementById('today-accrual-exclusive').addEventListener('click',()=>accrueThrough(addDays(today(),-1)));
+document.getElementById('today-accrual-inclusive').addEventListener('click',()=>accrueThrough(today()));
+
+document.getElementById('pda-accrue-today').addEventListener('click',()=>{
+  openTodayAccrualDialog();
 });
 
 document.getElementById('pda-add').addEventListener('click',()=>{
@@ -194,7 +210,7 @@ function renderHomePayday(){
       <span class="home-pay-route" aria-hidden="true"><span class="done"></span><i></i><span></span></span>
     </div><div class="home-payday-actions"><button class="btn primary" data-home-accrue>Учесть часы сегодня</button></div></div>`;
     box.querySelector('[data-home-accrue]').addEventListener('click',()=>{
-      if(startPendingPayAccrual(today()))refreshPayActuals();
+      openTodayAccrualDialog();
     });
     return;
   }

@@ -419,6 +419,12 @@
 
 <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
+<dialog class="app-dialog" id="today-accrual-dialog">
+  <div class="dialog-heading"><div><p class="eyebrow">Учёт часов</p><h2>Закрыть расчётный период</h2></div><button type="button" class="icon-btn" id="today-accrual-cancel" aria-label="Закрыть">×</button></div>
+  <p class="meta" id="today-accrual-meta"></p>
+  <div class="dialog-actions"><button class="btn quiet" id="today-accrual-exclusive">Не включая сегодня</button><span class="spacer"></span><button class="btn primary" id="today-accrual-inclusive">Включая сегодня</button></div>
+</dialog>
+
 <dialog class="app-dialog" id="entry-dialog">
   <div class="dialog-heading"><div><p class="eyebrow">Рабочая запись</p><h2>Изменить запись</h2></div><button type="button" class="icon-btn" id="ed-cancel" aria-label="Закрыть">×</button></div>
   <div class="meta" id="ed-meta"></div>

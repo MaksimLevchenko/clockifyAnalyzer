@@ -21,6 +21,11 @@ function forecastRoundedHours(value){
   return Math.ceil(Number(value)||0);
 }
 
+function forecastHoursMinutes(value){
+  const totalMinutes=Math.max(0,Math.round((Number(value)||0)*60));
+  return `${Math.floor(totalMinutes/60)} ч ${totalMinutes%60} мин`;
+}
+
 function forecastMoneyForRoundedHours(money,hours,fallbackRate){
   const amount=Number(money)||0;
   const worked=Number(hours)||0;
@@ -78,13 +83,12 @@ function renderForecastSummary(r,end){
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
   const unknownPayout=r.pendingNow&&r.pendingNow.nextPayout==null;
   const roundedUnpaid=forecastMoneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate);
-  const unpaidWithTax=(Number(r.unpaidNow)||0)*(1+taxRate);
   const roundedUnpaidWithTax=roundedUnpaid*(1+taxRate);
   const unpaidTax=r.unpaidNowHours&&taxRate>0
-    ?`<span class="tax-inclusive">К выставлению с налогом: <b>${forecastRoundedMoney(unpaidWithTax,roundedUnpaidWithTax,currency)}</b></span>`
+    ?`<span class="tax-inclusive">К выставлению с налогом: <b>${forecastMoney(roundedUnpaidWithTax,currency)}</b></span>`
     :'';
   const unpaidSub=r.unpaidNowHours
-    ?`${fmt(r.unpaidNowHours)} ч уже отработано${unknownPayout?' · дата выплаты пока не указана':''}${unpaidTax}`
+    ?`${forecastHoursMinutes(r.unpaidNowHours)} уже отработано${unknownPayout?' · дата выплаты пока не указана':''}${unpaidTax}`
     :'Нет неоплаченных часов';
   const scenarioDate=esc(dateRu(end,true));
 
@@ -137,7 +141,7 @@ function renderForecastSummary(r,end){
       </article>
       <article class="money-card">
         <div class="k">Заработано, но не выплачено</div>
-        <div class="v green precise">${forecastRoundedMoney(r.unpaidNow||0,roundedUnpaid,currency)}</div>
+        <div class="v green precise">${forecastMoney(roundedUnpaid,currency)}</div>
         <div class="sub">${unpaidSub}</div>
       </article>
     </div>

@@ -115,16 +115,22 @@ function pendingPayInfo(){
     state.payDayActuals,state.pendingPayAccrual
   );
   const period=payPeriodEarned(state.entries,events,state.rate).get(state.pendingPayAccrual);
+  const currency=esc(cur());
+  const taxRate=Math.max(0,Math.min(1,(Number(state.taxRate)||0)/100));
+  const roundedGross=period?forecastMoneyForRoundedHours(period.gross,period.hours,state.rate):0;
   const detail=period
-    ?`${fmt(period.hours)} ч · ${fmt(period.gross)} ${esc(cur())}`
+    ?`${fmt(forecastRoundedHours(period.hours))} ч · ${forecastMoney(roundedGross,currency)}`
     :'Сумма появится после импорта часов';
-  return{date:state.pendingPayAccrual,detail};
+  const taxDetail=period&&taxRate>0
+    ?`<span class="tax-inclusive">К выставлению с налогом: <b>${forecastMoney(roundedGross*(1+taxRate),currency)}</b></span>`
+    :'';
+  return{date:state.pendingPayAccrual,detail,taxDetail};
 }
 
 function pendingPayHtml(info){
   if(!info)return'';
   return `<div class="pending-pay-row">
-    <div class="pending-pay-heading"><strong>Ждёт выплаты · часы учтены по ${esc(dateRu(info.date,true))}</strong><span>${info.detail}</span></div>
+    <div class="pending-pay-heading"><strong>Ждёт выплаты · часы учтены по ${esc(dateRu(info.date,true))}</strong><span>${info.detail}${info.taxDetail}</span></div>
     <div class="pending-pay-actions">
       <div class="field"><label for="pda-pending-payout">День выплаты</label><input type="date" id="pda-pending-payout"></div>
       <button class="btn secondary sm" data-pda-complete>Указать выплату</button>
@@ -217,7 +223,7 @@ function renderHomePayday(){
   box.innerHTML=`<div class="home-payday-layout"><div class="home-payday-copy">
     <span class="home-payday-kicker">Ждёт выплаты</span>
     <strong class="home-payday-title">Часы учтены по ${esc(dateRu(info.date,true))}</strong>
-    <span class="home-payday-detail">${info.detail} · дата прихода пока не указана</span>
+    <span class="home-payday-detail">${info.detail} · дата прихода пока не указана${info.taxDetail}</span>
     <span class="home-pay-route" aria-hidden="true"><span class="done"></span><i></i><span></span></span>
   </div><div class="home-payday-actions">
     <div class="field"><label for="home-payout-date">День выплаты</label><input type="date" id="home-payout-date"></div>

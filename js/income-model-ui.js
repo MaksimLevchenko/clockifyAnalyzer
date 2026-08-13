@@ -26,18 +26,15 @@ function renderIncomeModels(){
       <div class="income-version-date"><span>${index===0?'База':esc(dateRu(model.effectiveFrom,true))}</span><i></i></div>
       <div class="income-version-body">
         <div class="income-version-heading"><div><span class="pill ${model.type==='salary'?'m':'d'}">${incomeModelLabel(model)}</span><strong>${metric}</strong></div>
-          ${index?`<button type="button" class="btn terra sm" data-im-delete="${index}">удалить версию</button>`:''}</div>
+          ${itemEditButton('Редактировать версию дохода',`data-im-edit="${index}"`)}</div>
         <small>${period} · налог ${fmt(model.taxRate)}% · вес истории ${model.halfLife} дн.</small>
         <ul>${payments}</ul>
       </div>
     </article>`;
   }).join('');
-  list.querySelectorAll('[data-im-delete]').forEach(button=>button.addEventListener('click',()=>{
-    const index=+button.dataset.imDelete;
-    if(!confirm('Удалить эту версию? Предыдущая модель продолжит действовать до следующего перехода.'))return;
-    state.incomeModels.splice(index,1);saveState();renderIncomeModels();
-    renderTicker();renderActualExpenses();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+  list.querySelectorAll('[data-im-edit]').forEach(button=>button.addEventListener('click',()=>{
+    const model=state.incomeModels[+button.dataset.imEdit];
+    if(model)openIncomeModelEditor(model,button);
   }));
 }
 
@@ -110,4 +107,3 @@ document.getElementById('im-add').addEventListener('click',()=>{
 document.getElementById('im-date').value=today();
 document.getElementById('im-rate').value=state.rate;
 renderIncomeModels();renderIncomePaymentDraft();
-

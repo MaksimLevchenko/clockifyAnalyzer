@@ -41,19 +41,29 @@ function forecastSavingsTimeline(es,exs,incs,cps,end,nSims,seed,opts){
     incMap.set(inc.date,(incMap.get(inc.date)||0)+Number(inc.amount));
 
   const scheduled=new Map();
+  const firstEntry=(es||[]).reduce((first,entry)=>!first||entry.date<first?entry.date:first,null);
+  const paymentEvents=hourlyPaymentEvents(
+    models,opts.payDayActuals,opts.pendingPayAccrual,firstEntry||start,end
+  );
   let initialUnpaid=0,initialUnpaidHours=0;
   for(const entry of es||[]){
     if(entry.date>anchor.date)continue;
     const model=incomeModelAt(models,entry.date);
     if(model.type!=='hourly')continue;
-    const payout=nextModelPaymentDate(entry.date,model);
-    if(payout<=anchor.date)continue;
-    if(!scheduled.has(payout))scheduled.set(payout,{amount:new Float64Array(nSims),hours:0,seeded:0});
-    const lot=scheduled.get(payout);
+    const paymentEvent=hourlyPaymentEvent(entry.date,model,paymentEvents);
+    const payout=paymentEvent?paymentEvent.payout:nextModelPaymentDate(entry.date,model);
+    const payoutKey=payout||`pending:${model.id}`;
+    if(payout&&payout<=anchor.date)continue;
+    if(!scheduled.has(payoutKey))scheduled.set(payoutKey,{
+      amount:new Float64Array(nSims),tax:new Float64Array(nSims),hours:0,seeded:0,
+      accrual:paymentEvent&&paymentEvent.accrual
+    });
+    const lot=scheduled.get(payoutKey);
     const rate=model.effectiveFrom===INCOME_MODEL_ORIGIN&&Number(entry.rate)>0
       ?Number(entry.rate):Number(model.rate)||0;
     const money=Number(entry.hours||0)*rate;
-    for(let s=0;s<nSims;s++)lot.amount[s]+=money;
+    const tax=money*(Number(model.taxRate)||0)/100;
+    for(let s=0;s<nSims;s++){lot.amount[s]+=money;lot.tax[s]+=tax}
     lot.hours+=Number(entry.hours)||0;lot.seeded+=money;
     initialUnpaid+=money;initialUnpaidHours+=Number(entry.hours)||0;
   }
@@ -84,22 +94,35 @@ function forecastSavingsTimeline(es,exs,incs,cps,end,nSims,seed,opts){
     const salaryIn=salaryPaymentOnDate(model,ds);
     const due=scheduled.get(ds)||null;
     const deposits=new Float64Array(nSims);
+    const depositTaxes=new Float64Array(nSims);
     let expectedEarned=salaryIn;
-    if(salaryIn)for(let s=0;s<nSims;s++)deposits[s]+=salaryIn;
-    if(due)for(let s=0;s<nSims;s++)deposits[s]+=due.amount[s];
+    const salaryTax=salaryIn*(Number(model.taxRate)||0)/100;
+    if(salaryIn)for(let s=0;s<nSims;s++){
+      deposits[s]+=salaryIn;depositTaxes[s]+=salaryTax;
+    }
+    if(due)for(let s=0;s<nSims;s++){
+      deposits[s]+=due.amount[s];depositTaxes[s]+=due.tax[s];
+    }
     if(model.type==='hourly'&&!isVac){
       const stat=modelStats.get(model.id),sampler=stat.samplers[w];
-      const payout=nextModelPaymentDate(ds,model);
+      const paymentEvent=hourlyPaymentEvent(ds,model,paymentEvents);
+      const payout=paymentEvent?paymentEvent.payout:nextModelPaymentDate(ds,model);
+      const payoutKey=payout||`pending:${model.id}`;
       let lot=null;
-      if(payout!==ds){
-        if(!scheduled.has(payout))scheduled.set(payout,{amount:new Float64Array(nSims),hours:0,seeded:0});
-        lot=scheduled.get(payout);
+      if(payoutKey!==ds){
+        if(!scheduled.has(payoutKey))scheduled.set(payoutKey,{
+          amount:new Float64Array(nSims),tax:new Float64Array(nSims),hours:0,seeded:0,
+          accrual:paymentEvent&&paymentEvent.accrual
+        });
+        lot=scheduled.get(payoutKey);
       }
       let hoursSum=0;
       for(let s=0;s<nSims;s++){
         const hours=sampler&&rand()<stat.wm.pWork[w]?stat.wm.pools[w][sampler.sample(rand)]:0;
         const money=hours*(Number(model.rate)||0);hoursSum+=hours;
-        if(payout===ds)deposits[s]+=money;else lot.amount[s]+=money;
+        const tax=money*(Number(model.taxRate)||0)/100;
+        if(payout===ds){deposits[s]+=money;depositTaxes[s]+=tax}
+        else{lot.amount[s]+=money;lot.tax[s]+=tax}
       }
       const meanHours=hoursSum/nSims;
       expectedEarned=meanHours*(Number(model.rate)||0);
@@ -130,13 +153,15 @@ function forecastSavingsTimeline(es,exs,incs,cps,end,nSims,seed,opts){
     if(meanOut-autoMeanRate/dim>0)expenseEvents.push({date:ds,amount:meanOut-autoMeanRate/dim});
     if(!nextSalary&&ds>=ref&&depositMean>0){
       const sorted=Float64Array.from(deposits).sort();
-      const tax=Math.max(0,Math.min(1,(Number(model.taxRate)||0)/100));
+      const sortedTaxes=Float64Array.from(depositTaxes).sort();
+      const expHours=due?due.hours:0;
       nextSalary={
-        date:ds,mean:depositMean,median:sorted[Math.floor(.5*nSims)],
+        date:ds,accrual:due&&due.accrual,mean:depositMean,median:sorted[Math.floor(.5*nSims)],
         p10:sorted[Math.floor(.1*nSims)],p90:sorted[Math.floor(.9*nSims)],
-        min:sorted[0],max:sorted[nSims-1],taxMean:depositMean*tax,
-        taxP10:sorted[Math.floor(.1*nSims)]*tax,taxP90:sorted[Math.floor(.9*nSims)]*tax,
-        expHours:model.type==='hourly'?(due?due.hours:0):0,
+        min:sorted[0],max:sorted[nSims-1],
+        taxMean:depositTaxes.reduce((a,b)=>a+b,0)/nSims,
+        taxP10:sortedTaxes[Math.floor(.1*nSims)],taxP90:sortedTaxes[Math.floor(.9*nSims)],
+        expHours,rate:expHours>0?depositMean/expHours:0,
         incomeType:salaryIn&&due?'mixed':salaryIn?'salary':'hourly'
       };
     }

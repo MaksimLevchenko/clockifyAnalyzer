@@ -38,7 +38,8 @@ function normalizeIncomeModels(raw,state){
       monthlySalary:Math.max(0,Number(item.monthlySalary)||0),
       halfLife:Math.max(7,Math.min(365,Number(item.halfLife)||60)),
       taxRate:Math.max(0,Math.min(100,Number(item.taxRate)||0)),
-      payments:normalizePaymentRules(item.payments,type,type==='hourly'?state.payDays:null)
+      payments:normalizePaymentRules(item.payments,type,
+        type==='hourly'&&effectiveFrom===INCOME_MODEL_ORIGIN?state.payDays:null)
     });
   }
   if(!byDate.has(INCOME_MODEL_ORIGIN))byDate.set(INCOME_MODEL_ORIGIN,legacy);
@@ -80,10 +81,55 @@ function nextModelPaymentDate(date,model){
   return date;
 }
 
+function actualIncomeModel(models,actual){
+  const accrual=actual&&typeof actual==='object'?actual.accrual:null;
+  const payout=typeof actual==='string'?actual:actual&&actual.payout;
+  if(accrual)return incomeModelAt(models,accrual);
+  if(!payout)return null;
+  const active=incomeModelAt(models,payout);
+  if(active.type==='hourly')return active;
+  for(let i=models.length-1;i>=0;i--){
+    const model=models[i];
+    if(model.type!=='hourly'||model.effectiveFrom>payout)continue;
+    const end=incomeModelEnd(models,i);
+    if(end&&end<=payout&&daysBetween(end,payout)<=MAX_PAYOUT_DELAY)return model;
+  }
+  return null;
+}
+
+function hourlyPaymentEvents(models,actuals,pendingAccrual,start,end){
+  const byModel=new Map();
+  for(const model of models){
+    if(model.type!=='hourly'||!model.payments.length)continue;
+    const modelActuals=(actuals||[]).filter(actual=>actualIncomeModel(models,actual)===model);
+    const modelPending=pendingAccrual&&incomeModelAt(models,pendingAccrual)===model
+      ?pendingAccrual:null;
+    const events=effectivePayEvents(
+      addDays(start,-45),addDays(end,62),
+      paySchedule(model.payments.map(payment=>payment.day)),modelActuals,modelPending
+    ).sort((a,b)=>a.accrual<b.accrual?-1:1);
+    byModel.set(model.id,events);
+  }
+  return byModel;
+}
+
+function hourlyPaymentEvent(date,model,eventsByModel){
+  if(!model.payments.length)return null;
+  const events=eventsByModel.get(model.id)||[];
+  return events.find(item=>item.accrual>=date)||null;
+}
+
+function hourlyPayoutDate(date,model,eventsByModel){
+  const event=hourlyPaymentEvent(date,model,eventsByModel);
+  return event?event.payout:nextModelPaymentDate(date,model);
+}
+
 function incomeModelLabel(model){return model.type==='salary'?'Оклад':'Почасовая'}
 
-function timelineIncomeByDay(entries,models,start,end){
+function timelineIncomeByDay(entries,models,start,end,actuals,pendingAccrual){
   const result=new Map();
+  const firstEntry=(entries||[]).reduce((first,entry)=>!first||entry.date<first?entry.date:first,null);
+  const events=hourlyPaymentEvents(models,actuals,pendingAccrual,firstEntry||start,end);
   for(const date of dateRange(start,end)){
     const model=incomeModelAt(models,date),amount=salaryPaymentOnDate(model,date);
     if(amount)result.set(date,(result.get(date)||0)+amount);
@@ -91,7 +137,8 @@ function timelineIncomeByDay(entries,models,start,end){
   for(const entry of entries||[]){
     const model=incomeModelAt(models,entry.date);
     if(model.type!=='hourly')continue;
-    const payout=nextModelPaymentDate(entry.date,model);
+    const payout=hourlyPayoutDate(entry.date,model,events);
+    if(!payout)continue;
     if(payout<start||payout>end)continue;
     const rate=model.effectiveFrom===INCOME_MODEL_ORIGIN&&Number(entry.rate)>0
       ?Number(entry.rate):Number(model.rate)||0;

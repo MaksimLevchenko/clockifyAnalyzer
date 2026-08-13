@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Spline+Sans:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="js/theme.js?v=20260727-theme1"></script>
-<link rel="stylesheet" href="styles.css?v=20260803-income-timeline1">
+<link rel="stylesheet" href="styles.css?v=20260813-item-edit1">
 </head>
 <body>
 <div class="app-shell">
@@ -358,12 +358,9 @@
       </header>
 
       <div class="card">
-        <div class="card-heading"><h2>Базовая почасовая модель</h2><p>Действует до первого перехода. Её история и расчёты сохраняются.</p></div>
+        <div class="card-heading"><h2>Общие настройки</h2><p>Параметры конкретной версии дохода меняются по карандашу в истории ниже.</p></div>
         <div class="settings-grid">
-          <div class="field"><label for="in-rate">Ставка в час</label><input type="number" id="in-rate" step="0.01"></div>
           <div class="field"><label for="in-currency">Валюта</label><input type="text" id="in-currency" maxlength="6"></div>
-          <div class="field"><label for="in-halfLife">Вес свежей истории, дней</label><input type="number" id="in-halfLife" min="7" max="365" step="1"><small>60 — сбалансированный прогноз</small></div>
-          <div class="field"><label for="in-taxRate">Налог работодателя, %</label><input type="number" id="in-taxRate" min="0" max="100" step="0.5"><small>Показывается справочно и не вычитается</small></div>
         </div>
       </div>
 
@@ -475,19 +472,33 @@
   <div class="dialog-actions"><button class="btn danger" id="ed-delete">Удалить</button><span class="spacer"></span><button class="btn primary" id="ed-save">Сохранить</button></div>
 </dialog>
 
-<script src="js/core.js?v=20260803-income-timeline1"></script>
-<script src="js/income-models.js?v=20260803-income-timeline1"></script>
-<script src="js/timeline-forecast.js?v=20260803-income-timeline1"></script>
+<dialog class="app-dialog edit-dialog" id="edit-dialog">
+  <form method="dialog" id="edit-dialog-form">
+    <div class="dialog-heading"><div><p class="eyebrow" id="edit-dialog-eyebrow"></p><h2 id="edit-dialog-title"></h2></div><button type="button" class="icon-btn" id="edit-dialog-close" aria-label="Закрыть">×</button></div>
+    <div class="form-stack" id="edit-dialog-body"></div>
+    <p class="dialog-error" id="edit-dialog-error" role="alert" hidden></p>
+    <div class="dialog-actions"><button type="button" class="btn danger" id="edit-dialog-delete">Удалить</button><span class="spacer"></span><button type="button" class="btn quiet" id="edit-dialog-cancel">Отмена</button><button type="submit" class="btn primary" id="edit-dialog-save">Сохранить изменения</button></div>
+  </form>
+</dialog>
+
+<script src="js/core.js?v=20260813-pay-actual1"></script>
+<script src="js/income-models.js?v=20260813-pay-actual1"></script>
+<script src="js/timeline-forecast.js?v=20260813-pay-actual1"></script>
 <script src="js/state.js?v=20260803-income-timeline1"></script>
 <script src="js/ui.js?v=20260725-redesign5"></script>
 <script src="js/charts.js?v=20260803-income-timeline1"></script>
 <script src="js/forecast-chart-events.js?v=20260803-income-timeline1"></script>
 <script src="js/forecast-chart-controls.js"></script>
 <script src="js/forecast-chart.js"></script>
-<script src="js/forecast-summary.js?v=20260803-income-timeline1"></script>
+<script src="js/forecast-summary.js?v=20260813-pay-actual1"></script>
 <script src="js/sync.js"></script>
-<script src="js/payday-ui.js?v=20260803-income-timeline1"></script>
-<script src="js/income-model-ui.js?v=20260803-income-timeline1"></script>
-<script src="js/app.js?v=20260803-income-timeline1"></script>
+<script src="js/edit-dialog.js?v=20260813-item-edit1"></script>
+<script src="js/expense-editor.js?v=20260813-item-edit1"></script>
+<script src="js/plan-item-editors.js?v=20260813-item-edit1"></script>
+<script src="js/payday-ui.js?v=20260813-item-edit1"></script>
+<script src="js/payday-editors.js?v=20260813-item-edit1"></script>
+<script src="js/income-model-ui.js?v=20260813-item-edit1"></script>
+<script src="js/income-model-editor.js?v=20260813-item-edit1"></script>
+<script src="js/app.js?v=20260813-item-edit1"></script>
 </body>
 </html>

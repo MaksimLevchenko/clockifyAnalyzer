@@ -121,24 +121,18 @@ document.getElementById('btn-reset').addEventListener('click',()=>{
 });
 
 /* ========================= DATA TAB (params + stats + ticker) ========================= */
-['rate','currency','halfLife','taxRate'].forEach(k=>{
+['currency'].forEach(k=>{
   const el=document.getElementById('in-'+k);
   if(!el)return;
   el.addEventListener('change',()=>{
-    if(k==='rate')state.rate=parseFloat(el.value)||0;
-    if(k==='currency')state.currency=el.value||'USD';
-    if(k==='halfLife')state.halfLife=Math.max(7,Math.min(365,parseInt(el.value)||60));
-    if(k==='taxRate')state.taxRate=Math.max(0,Math.min(100,parseFloat(el.value)||0));
+    state.currency=el.value||'USD';
     saveState();renderTicker();renderDataStats();renderCheckpoints();renderIncomes();renderExpenses();renderActualExpenses();renderHomePayday();renderIncomeModels();
     if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
   });
 });
 
 function syncInputs(){
-  document.getElementById('in-rate').value=state.rate;
   document.getElementById('in-currency').value=state.currency;
-  const hl=document.getElementById('in-halfLife');if(hl)hl.value=state.halfLife;
-  const tr=document.getElementById('in-taxRate');if(tr)tr.value=state.taxRate;
   if(!document.getElementById('fc-end').value)
     document.getElementById('fc-end').value=addDays(anchorDate(),90);
   const cpD=document.getElementById('cp-date');if(!cpD.value)cpD.value=today();
@@ -250,7 +244,7 @@ function renderWork(){
       <td class="num">${e.hours.toFixed(2)}</td>
       <td class="num">${fmt(e.rate)}</td>
       <td class="num">${fmt(entryIncomeAmount(e,state.incomeModels))}</td>
-      <td><button class="btn ghost sm" data-eidx="${i}" title="Редактировать / удалить">✎</button></td>
+      <td>${itemEditButton('Редактировать рабочую запись',`data-eidx="${i}"`)}</td>
     </tr>`);
   }
   tb.innerHTML=html.join('');
@@ -298,7 +292,7 @@ document.getElementById('ed-save').addEventListener('click',()=>{
 
 document.getElementById('ed-delete').addEventListener('click',()=>{
   if(_editIdx<0)return;
-  if(!confirm('Удалить эту запись?'))return;
+  if(!confirm('Удалить эту рабочую запись? Доход и статистика будут пересчитаны.'))return;
   state.entries.splice(_editIdx,1);
   _editIdx=-1;_edDlg.close();
   afterDataChange();
@@ -380,16 +374,13 @@ function renderExpenses(){
     const g=Number(e.growthRate||0);
     const isOnce=e.kind==='once';
     const grLabel=!isOnce&&g!==0?` <span class="note">· ${g>0?'+':''}${g.toFixed(1)}%/год</span>`:'';
-    const grCell=isOnce
-      ?`<span class="note" title="Разовая трата не индексируется">—</span>`
-      :`<input type="number" step="0.5" value="${g}" data-exgrow="${i}" style="width:70px" title="Годовой рост, %">`;
+    const grCell=isOnce?'—':`${g>0?'+':''}${fmt(g)}%`;
     const size=e.amountMode==='percent'
       ?`${fmt(e.percent)}% <span class="note">${expenseBaseLabel(e.percentBase)}</span>`
       :`${fmt(e.amount)} ${c}${e.kind==='daily'?' /мес':''}`;
     const start=e.startDate||(isOnce?e.date:INCOME_MODEL_ORIGIN);
     const period=isOnce?dateRu(e.date,true)
       :`${start===INCOME_MODEL_ORIGIN?'с начала истории':`с ${dateRu(start,true)}`}${e.endDate?` · по ${dateRu(e.endDate,true)}`:''}`;
-    const stop=!isOnce&&!e.endDate?`<div class="expense-stop"><input type="date" value="${today()}" data-ex-stop-date="${i}" aria-label="Дата остановки"><button class="btn quiet sm" data-ex-stop="${i}">остановить</button></div>`:'';
     return `<tr>
       <td><span class="pill ${expenseKindPill(e.kind)}">${expenseKindLabel(e.kind)}</span></td>
       <td>${esc(e.name)}${grLabel}</td>
@@ -397,30 +388,11 @@ function renderExpenses(){
       <td>${expenseWhen(e)}</td>
       <td>${period}</td>
       <td>${grCell}</td>
-      <td>${stop}<button class="btn terra sm" data-del="${i}">удалить</button></td>
+      <td>${itemEditButton('Редактировать правило расхода',`data-ex-edit="${i}"`)}</td>
     </tr>`;
   }).join('');
-  tb.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{
-    if(!confirm('Удалить правило целиком? Его прошлое влияние тоже исчезнет из расчётов.'))return;
-    state.expenses.splice(+b.dataset.del,1);saveState();renderExpenses();renderActualExpenses();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-  }));
-  tb.querySelectorAll('[data-ex-stop]').forEach(button=>button.addEventListener('click',()=>{
-    const index=+button.dataset.exStop;
-    const stopDate=tb.querySelector(`[data-ex-stop-date="${index}"]`).value;
-    if(!stopDate){toast('Укажи дату остановки');return}
-    const expense=state.expenses[index];
-    if(stopDate<=expense.startDate){toast('Дата остановки должна быть позже даты начала');return}
-    expense.endDate=addDays(stopDate,-1);saveState();renderExpenses();renderActualExpenses();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-    toast(`Правило остановлено с ${dateRu(stopDate,true)}. Прошлые списания сохранены.`);
-  }));
-  tb.querySelectorAll('[data-exgrow]').forEach(inp=>inp.addEventListener('change',()=>{
-    const i=+inp.dataset.exgrow;
-    state.expenses[i].growthRate=Math.max(-50,Math.min(100,parseFloat(inp.value)||0));
-    saveState();renderExpenses();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-  }));
+  tb.querySelectorAll('[data-ex-edit]').forEach(button=>button.addEventListener('click',()=>
+    openExpenseEditor(state.expenses[+button.dataset.exEdit],button)));
 }
 
 function renderActualExpenses(){
@@ -512,13 +484,10 @@ function renderVacations(){
   const c=esc(cur());
   list.innerHTML=vs.map((v,i)=>`<div class="vac-row">
     <span><b>${esc(dateRu(v.from,true))} → ${esc(dateRu(v.to,true))}</b>${v.name?` · ${esc(v.name)}`:''}</span>
-    <button class="btn terra sm" data-vacdel="${i}">×</button>
+    ${itemEditButton('Редактировать нерабочий период',`data-vacedit="${i}"`)}
   </div>`).join('');
-  list.querySelectorAll('[data-vacdel]').forEach(b=>b.addEventListener('click',()=>{
-    state.vacations.splice(+b.dataset.vacdel,1);
-    saveState();renderVacations();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-  }));
+  list.querySelectorAll('[data-vacedit]').forEach(button=>button.addEventListener('click',()=>
+    openPlanItemEditor('vacation',vs[+button.dataset.vacedit],button)));
 }
 
 /* ========================= CHECKPOINTS ========================= */
@@ -560,56 +529,16 @@ function renderCheckpoints(){
       :'<span class="pill">прошлое</span>';
     const id=esc(cp.date);
     const balVal=Number(cp.balance)||0;
-    const dateInp=`<input type="date" aria-label="Дата записи баланса" value="${id}" data-cpdate="${id}" style="font-size:12px;padding:2px 4px">`;
-    const balInp=`<input type="number" aria-label="Сумма баланса" step="0.01" value="${balVal}" data-cpbal="${id}" style="width:110px;text-align:right">`;
-    const kindOpt=`<select aria-label="Тип записи баланса" class="cp-kind-sel" data-cpkind="${id}" style="font-size:11px;padding:2px 4px"><option value="actual"${k==='actual'?' selected':''}>факт</option><option value="target"${k==='target'?' selected':''}>цель</option></select>`;
     return `<tr>
-      <td>${dateInp} ${pill}</td>
-      <td class="num">${balInp} ${c}</td>
-      <td>${kindOpt}</td>
-      <td><button class="btn terra sm" data-cpdel="${id}">удалить</button></td>
+      <td>${esc(dateRu(cp.date,true))} ${pill}</td>
+      <td class="num">${fmt(balVal)} ${c}</td>
+      <td>${k==='target'?'цель':'факт'}</td>
+      <td>${itemEditButton('Редактировать запись баланса',`data-cpedit="${id}"`)}</td>
     </tr>`;
   }).join('');
-  tb.querySelectorAll('[data-cpdel]').forEach(b=>b.addEventListener('click',()=>{
-    const d=b.dataset.cpdel;
-    state.checkpoints=state.checkpoints.filter(c=>c.date!==d);
-    pruneStaleExclusions();
-    saveState();renderCheckpoints();renderActualExpenses();renderTicker();renderDataStats();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-  }));
-  tb.querySelectorAll('[data-cpkind]').forEach(s=>s.addEventListener('change',()=>{
-    const d=s.dataset.cpkind;const cp=state.checkpoints.find(c=>c.date===d);
-    if(cp){cp.kind=s.value;pruneStaleExclusions();saveState();renderCheckpoints();renderActualExpenses();
-      if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);}
-  }));
-  tb.querySelectorAll('[data-cpdate]').forEach(inp=>inp.addEventListener('change',()=>{
-    const oldD=inp.dataset.cpdate, newD=inp.value;
-    if(!newD||newD===oldD)return; // дату ещё вводят
-    if(state.checkpoints.some(c=>c.date===newD)){
-      toast('Чекпоинт на эту дату уже есть');inp.value=oldD;return;
-    }
-    const cp=state.checkpoints.find(c=>c.date===oldD);if(!cp)return;
-    cp.date=newD;inp.dataset.cpdate=newD;
-    /* НЕ перерисовываем таблицу здесь — иначе посегментный ввод даты сбрасывается.
-       Синхронизируем ключи соседних контролов строки (они ключуются по дате). */
-    const tr=inp.closest('tr');
-    if(tr){
-      tr.querySelectorAll('[data-cpbal]').forEach(x=>x.dataset.cpbal=newD);
-      tr.querySelectorAll('[data-cpdel]').forEach(x=>x.dataset.cpdel=newD);
-      tr.querySelectorAll('[data-cpkind]').forEach(x=>x.dataset.cpkind=newD);
-    }
-    pruneStaleExclusions();
-    saveState();renderActualExpenses();renderTicker();renderDataStats();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
-  }));
-  tb.querySelectorAll('[data-cpbal]').forEach(inp=>inp.addEventListener('change',()=>{
-    const d=inp.dataset.cpbal;
-    const cp=state.checkpoints.find(c=>c.date===d);if(!cp)return;
-    const v=parseFloat(inp.value);
-    if(!isFinite(v)){inp.value=cp.balance;return}
-    cp.balance=v;
-    saveState();renderCheckpoints();renderActualExpenses();renderTicker();renderDataStats();
-    if(document.getElementById('panel-forecast').classList.contains('active'))runForecast(true);
+  tb.querySelectorAll('[data-cpedit]').forEach(button=>button.addEventListener('click',()=>{
+    const checkpoint=state.checkpoints.find(item=>item.date===button.dataset.cpedit);
+    if(checkpoint)openPlanItemEditor('checkpoint',checkpoint,button);
   }));
 }
 
@@ -645,11 +574,10 @@ function renderIncomes(){
     <td>${esc(e.name)}</td>
     <td class="num">${fmt(e.amount)} ${c}</td>
     <td>${esc(e.date.split('-').reverse().join('.'))}</td>
-    <td><button class="btn terra sm" data-idel="${i}">удалить</button></td>
+    <td>${itemEditButton('Редактировать поступление',`data-iedit="${i}"`)}</td>
   </tr>`).join('');
-  tb.querySelectorAll('[data-idel]').forEach(b=>b.addEventListener('click',()=>{
-    state.incomes.splice(+b.dataset.idel,1);saveState();renderIncomes();
-  }));
+  tb.querySelectorAll('[data-iedit]').forEach(button=>button.addEventListener('click',()=>
+    openPlanItemEditor('income',state.incomes[+button.dataset.iedit],button)));
 }
 
 /* ========================= FORECAST TAB ========================= */

@@ -72,14 +72,15 @@ function renderForecastSummary(r,end){
   const runway=monthlyExpenses>0?r.startBalance/monthlyExpenses:Infinity;
   const nextSalary=r.nextSalary;
   const roundedSalary=nextSalary
-    ?(nextSalary.incomeType!=='hourly'?nextSalary.mean:forecastMoneyForRoundedRateHours(nextSalary.expHours,r.rate))
+    ?(nextSalary.incomeType!=='hourly'?nextSalary.mean
+      :forecastMoneyForRoundedHours(nextSalary.mean,nextSalary.expHours,nextSalary.rate||r.rate))
     :0;
   const salaryValue=nextSalary
     ?forecastRoundedMoney(nextSalary.mean,roundedSalary,currency,true)
     :'Нет в периоде';
   const taxRate=Math.max(0,Number(r.taxRate)||0);
   const salarySub=nextSalary
-    ?`Выплата: ${esc(dateRu(nextSalary.date,true))}${nextSalary.accrual?` · отсечка: ${esc(dateRu(nextSalary.accrual,true))} (включительно)`:''}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,r.rate),currency)}</span>`
+    ?`Выплата: ${esc(dateRu(nextSalary.date,true))}${nextSalary.accrual?` · отсечка: ${esc(dateRu(nextSalary.accrual,true))} (включительно)`:''}<span>Коридор ${forecastRoundedMoney(nextSalary.p10,forecastMoneyForRoundedRate(nextSalary.p10,nextSalary.rate||r.rate),currency)}–${forecastRoundedMoney(nextSalary.p90,forecastMoneyForRoundedRate(nextSalary.p90,nextSalary.rate||r.rate),currency)}</span>`
     :(r.payDayDates.length?'Увеличь горизонт прогноза':'Добавь расписание в настройках');
   const unknownPayout=r.pendingNow&&r.pendingNow.nextPayout==null;
   const roundedUnpaid=forecastMoneyForRoundedHours(r.unpaidNow,r.unpaidNowHours,r.rate);

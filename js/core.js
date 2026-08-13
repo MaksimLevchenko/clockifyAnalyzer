@@ -1047,7 +1047,9 @@ function reconstructPastBalance(es,exs,incs,cps,opts){
   for(const inc of incs||[])if(inc.date>=firstDate&&inc.date<=anchorDate)
     incByDay.set(inc.date,(incByDay.get(inc.date)||0)+Number(inc.amount));
   const timelineMode=Array.isArray(opts.incomeModels)&&(opts.incomeModels.length>1||opts.useIncomeTimeline);
-  const timelineDeposits=timelineMode?timelineIncomeByDay(es,opts.incomeModels,firstDate,anchorDate):null;
+  const timelineDeposits=timelineMode?timelineIncomeByDay(
+    es,opts.incomeModels,firstDate,anchorDate,opts.payDayActuals,opts.pendingPayAccrual
+  ):null;
   const timelineHourlyMonthly=timelineMode?timelineHourlyIncomeByMonth(es,opts.incomeModels):null;
   const checkpointBalance=date=>{
     let value=used[0].balance;
@@ -1143,7 +1145,8 @@ function cashFlowFromCheckpoints(es,exs,incs,cps,opts){
   const paidGross=(from,to)=>{let g=0;for(const ev of events)if(ev.payout&&ev.payout>from&&ev.payout<=to){const pe=periods.get(ev.accrual);if(pe)g+=pe.gross}return g};
   const intervals=[],usedRates=[];
   const timelineDeposits=timelineMode
-    ?timelineIncomeByDay(es,opts.incomeModels,sorted[0].date,sorted[sorted.length-1].date)
+    ?timelineIncomeByDay(es,opts.incomeModels,sorted[0].date,sorted[sorted.length-1].date,
+      opts.payDayActuals,opts.pendingPayAccrual)
     :null;
   const timelineHourlyMonthly=timelineMode?timelineHourlyIncomeByMonth(es,opts.incomeModels):null;
   let totalNetOut=0,totalImplicit=0,totalEarned=0,totalDays=0;

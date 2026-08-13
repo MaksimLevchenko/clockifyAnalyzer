@@ -609,6 +609,10 @@ canvas{display:block;max-width:100%;cursor:crosshair}
 .app-dialog .meta{margin:5px 0 17px;color:var(--muted);font-size:11px}
 .dialog-actions{display:flex;align-items:center;gap:10px;margin-top:18px}
 .dialog-actions .spacer{flex:1}
+.edit-dialog{width:min(680px,calc(100vw - 24px))}
+.dialog-error{margin:12px 0 0;color:var(--terra);font-size:12px}
+.edit-action{display:inline-flex;align-items:center;justify-content:center;min-width:36px}
+.edit-dialog .payment-draft{min-height:24px}
 
 #toast{
   position:fixed;
